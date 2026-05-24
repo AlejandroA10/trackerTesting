@@ -124,6 +124,14 @@ tr:hover td{background:var(--bg2)}
 .import-hint{font-size:12px;color:var(--text3);margin-top:6px;line-height:1.6}
 .import-preview{font-size:12px;color:var(--text2);margin-top:8px;line-height:1.7;font-family:var(--mono)}
 .install-banner{display:none;background:var(--accent-light);border:1px solid rgba(29,158,117,.3);border-radius:var(--r-md);padding:10px 14px;margin-bottom:1rem;font-size:13px;color:var(--accent-dark);align-items:center;justify-content:space-between;gap:12px}
+/* Chart time-range filters */
+.chart-filters{display:flex;gap:4px;margin-top:10px;justify-content:center}
+.cf-btn{background:none;border:1px solid var(--border2);border-radius:var(--r-sm);padding:3px 10px;font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;font-family:var(--mono);letter-spacing:.03em;transition:all .12s}
+.cf-btn:hover{background:var(--bg3);color:var(--text2);border-color:var(--border2)}
+.cf-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+/* Institution label in update flow — make it pop */
+.upd-inst{font-size:13px;font-weight:600;color:var(--text);letter-spacing:-.1px;margin-bottom:3px;display:flex;align-items:center;gap:6px}
+.upd-inst-icon{font-size:16px}
 </style>
 </head>
 <body>
@@ -197,6 +205,14 @@ tr:hover td{background:var(--bg2)}
         <div class="chart-box">
           <div class="chart-lbl">Net worth over time</div>
           <div class="chart-wrap"><canvas id="lineChart"></canvas></div>
+          <div class="chart-filters" id="chart-filters">
+            <button class="cf-btn" onclick="setRange('3M')">3M</button>
+            <button class="cf-btn" onclick="setRange('6M')">6M</button>
+            <button class="cf-btn" onclick="setRange('YTD')">YTD</button>
+            <button class="cf-btn" onclick="setRange('1Y')">1Y</button>
+            <button class="cf-btn" onclick="setRange('5Y')">5Y</button>
+            <button class="cf-btn active" onclick="setRange('All')">All</button>
+          </div>
           <div class="legend" id="line-legend"></div>
         </div>
         <div class="chart-box">
@@ -298,6 +314,7 @@ let DB = {institutions:[], history:[], snapshots:[]};
 let pendingAccts = [], mPendingAccts = [], importedRows = [];
 let updQueue = [], updIdx = 0, updDate = '', updVals = {};
 let lineChart = null, pieChart = null, deferredInstall = null;
+let activeRange = 'All'; // time filter for line chart
 
 // ─── Persistence (IndexedDB) ──────────────────────────────────────────────────
 function openIDB() {
@@ -345,6 +362,17 @@ const fmtD = n => (n===null||n===undefined||isNaN(n)) ? '—' : (n>=0?'+':'-') +
 const fmtP = n => (n===null||n===undefined||isNaN(n)) ? '' : (n>=0?'+':'') + n.toFixed(1) + '%';
 const tagCls = t => 'tag tag-' + (t||'other');
 const allAccts = () => DB.institutions.flatMap(i => i.accounts.map(a => ({...a, instName:i.name, instId:i.id})));
+// Debt accounts are liabilities — stored as positive, treated as negative
+const acctSign = a => (a.type === 'debt') ? -1 : 1;
+const acctValue = (a, rawVal) => acctSign(a) * (rawVal || 0);
+// Format a value for the snapshot breakdown: negative → red + (parentheses), no bold
+function fmtAcctDisplay(val) {
+  if (val === null || val === undefined || isNaN(val)) return '—';
+  const neg = val < 0;
+  const abs = '$' + Math.round(Math.abs(val)).toLocaleString();
+  if (neg) return `<span style="color:var(--red);font-family:var(--mono);font-size:14px">(${abs})</span>`;
+  return `<span style="font-family:var(--mono);font-size:14px">${abs}</span>`;
+}
 
 function setStatus(msg, type) {
   const el = document.getElementById('sb'); if (!el) return;
@@ -361,7 +389,8 @@ function allEntries() {
   const map = {};
   (DB.history||[]).forEach(h => map[h.date] = {date:h.date, nw:h.nw, source:'history'});
   (DB.snapshots||[]).forEach(s => {
-    const total = allAccts().reduce((sum,a) => sum + (s.values[a.id]||0), 0);
+    const accts = allAccts();
+    const total = accts.reduce((sum,a) => sum + acctValue(a, s.values[a.id]), 0);
     map[s.date] = {date:s.date, nw:total, source:'snapshot', values:s.values};
   });
   return Object.values(map).sort((a,b) => a.date.localeCompare(b.date));
@@ -378,7 +407,7 @@ function renderSetupList() {
   el.innerHTML = DB.institutions.map(inst => `
     <div class="card">
       <div class="inst-hdr">
-        <div class="inst-name"><div class="inst-icon">🏦</div>${inst.name}</div>
+        <div class="inst-name"><div class="inst-icon">${inst.icon||'🏦'}</div>${inst.name}</div>
         <button class="btn btn-xs btn-danger" onclick="removeInstSetup('${inst.id}')">Remove</button>
       </div>
       ${inst.accounts.map(a => `<div class="acct-row"><div class="acct-info"><span style="font-size:14px">${a.name}</span><span class="${tagCls(a.type)}">${TAGS[a.type]}</span></div><button class="btn-ghost" onclick="removeAcctSetup('${inst.id}','${a.id}')">✕</button></div>`).join('')}
@@ -401,7 +430,7 @@ function addInstitution() {
   const n = document.getElementById('inp-inst').value.trim();
   if (!n) { setStatus('Enter an institution name.','err'); return; }
   if (!pendingAccts.length) { setStatus('Add at least one account.','err'); return; }
-  DB.institutions.push({id:uid(), name:n, accounts:[...pendingAccts]});
+  DB.institutions.push({id:uid(), name:n, icon:'🏦', accounts:[...pendingAccts]});
   pendingAccts = []; document.getElementById('inp-inst').value = '';
   renderPendingList(); renderSetupList();
 }
@@ -490,8 +519,34 @@ function renderMetrics() {
   setM('m-days-sub', days===0?'Updated today':days===1?'Yesterday':'days ago');
 }
 
+function setRange(r) {
+  activeRange = r;
+  document.querySelectorAll('.cf-btn').forEach(b => b.classList.toggle('active', b.textContent===r));
+  renderCharts();
+}
+
+function filteredEntries() {
+  const all = allEntries();
+  if (activeRange === 'All' || !all.length) return all;
+  const now = new Date();
+  let cutoff;
+  if (activeRange === '3M') { cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth()-3); }
+  else if (activeRange === '6M') { cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth()-6); }
+  else if (activeRange === 'YTD') { cutoff = new Date(now.getFullYear(), 0, 1); }
+  else if (activeRange === '1Y') { cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear()-1); }
+  else if (activeRange === '5Y') { cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear()-5); }
+  const cutStr = cutoff.toISOString().split('T')[0];
+  const filtered = all.filter(e => e.date >= cutStr);
+  // Always include one point before cutoff for context if available
+  if (filtered.length < all.length) {
+    const before = all.filter(e => e.date < cutStr);
+    if (before.length) filtered.unshift(before[before.length-1]);
+  }
+  return filtered;
+}
+
 function renderCharts() {
-  const entries = allEntries();
+  const entries = filteredEntries();
   const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
   const gridC = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.055)';
   const textC = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)';
@@ -523,8 +578,9 @@ function renderCharts() {
   const latestSnap = DB.snapshots.length ? DB.snapshots[DB.snapshots.length-1] : null;
   const accts = allAccts();
   if (latestSnap && accts.length) {
+    // Pie shows positive asset buckets only (taxable, deferred, roth)
     const buckets = {taxable:0, taxdeferred:0, taxfree:0};
-    accts.forEach(a => { if (buckets.hasOwnProperty(a.type)) buckets[a.type] += (latestSnap.values[a.id]||0); });
+    accts.forEach(a => { if (buckets.hasOwnProperty(a.type)) buckets[a.type] += Math.max(0, latestSnap.values[a.id]||0); });
     const total = Object.values(buckets).reduce((s,v)=>s+v, 0);
     const items = Object.entries(buckets).filter(([,v])=>v>0);
     if (pl) pl.innerHTML = items.length
@@ -548,9 +604,15 @@ function renderLatestBreakdown() {
   const snap = DB.snapshots.length ? DB.snapshots[DB.snapshots.length-1] : null;
   if (!snap) { el.innerHTML = '<div class="empty">No account snapshot yet.<br>Click "Update values" to log your first entry.</div>'; return; }
   el.innerHTML = DB.institutions.map(inst => {
-    const rows = inst.accounts.map(a => `<div class="acct-row"><div class="acct-info"><span style="font-size:14px">${a.name}</span><span class="${tagCls(a.type)}">${TAGS[a.type]}</span></div><span style="font-size:14px;font-weight:600;font-family:var(--mono)">${fmt(snap.values[a.id]||0)}</span></div>`).join('');
-    const t = inst.accounts.reduce((s,a) => s+(snap.values[a.id]||0), 0);
-    return `<div class="card"><div class="inst-hdr"><div class="inst-name"><div class="inst-icon">🏦</div>${inst.name}</div><span style="font-size:15px;font-weight:600;font-family:var(--mono)">${fmt(t)}</span></div>${rows}</div>`;
+    const rows = inst.accounts.map(a => {
+      const signed = acctValue(a, snap.values[a.id]);
+      return `<div class="acct-row"><div class="acct-info"><span style="font-size:14px">${a.name}</span><span class="${tagCls(a.type)}">${TAGS[a.type]}</span></div>${fmtAcctDisplay(signed)}</div>`;
+    }).join('');
+    const t = inst.accounts.reduce((s,a) => s + acctValue(a, snap.values[a.id]), 0);
+    const tDisplay = t < 0
+      ? `<span style="color:var(--red);font-size:15px;font-family:var(--mono)">(${fmt(Math.abs(t)).replace('$','$')})</span>`
+      : `<span style="font-size:15px;font-family:var(--mono)">${fmt(t)}</span>`;
+    return `<div class="card"><div class="inst-hdr"><div class="inst-name"><div class="inst-icon">${inst.icon||'🏦'}</div>${inst.name}</div>${tDisplay}</div>${rows}</div>`;
   }).join('');
 }
 
@@ -596,12 +658,20 @@ function exportCSV() {
 }
 
 // ─── Accounts tab ─────────────────────────────────────────────────────────────
+const ICON_OPTIONS = ['🏦','🏛️','💳','💰','📈','🏠','🚗','💎','🌱','🏢','🔐','💵','🪙','📊','🏗️','✈️','🎓','❤️'];
+
 function renderManage() {
   const el = document.getElementById('manage-list'); if (!el) return;
   el.innerHTML = DB.institutions.map(inst => `
     <div class="card">
       <div class="inst-hdr">
-        <div class="inst-name"><div class="inst-icon">🏦</div>${inst.name}</div>
+        <div class="inst-name">
+          <div class="inst-icon" style="cursor:pointer;position:relative" onclick="toggleIconPicker('${inst.id}')" title="Change icon">${inst.icon||'🏦'}</div>
+          <div id="icon-picker-${inst.id}" style="display:none;position:absolute;background:var(--bg);border:1px solid var(--border2);border-radius:var(--r-md);padding:8px;z-index:10;box-shadow:0 4px 16px rgba(0,0,0,0.12);display:none;flex-wrap:wrap;gap:4px;max-width:220px">
+            ${ICON_OPTIONS.map(ic=>`<button onclick="setInstIcon('${inst.id}','${ic}')" style="background:none;border:1px solid transparent;border-radius:6px;font-size:18px;cursor:pointer;padding:4px 6px;line-height:1" title="${ic}">${ic}</button>`).join('')}
+          </div>
+          ${inst.name}
+        </div>
         <div class="row">
           <button class="btn btn-xs" onclick="toggleAddAcct('${inst.id}')">+ Add account</button>
           <button class="btn btn-xs btn-danger" onclick="removeInstManage('${inst.id}')">Remove</button>
@@ -620,6 +690,26 @@ function renderManage() {
       </div>
     </div>`).join('');
 }
+
+function toggleIconPicker(instId) {
+  // Close all other pickers first
+  document.querySelectorAll('[id^="icon-picker-"]').forEach(p => {
+    if (p.id !== 'icon-picker-'+instId) p.style.display='none';
+  });
+  const el = document.getElementById('icon-picker-'+instId);
+  if (!el) return;
+  el.style.display = el.style.display==='flex'?'none':'flex';
+}
+async function setInstIcon(instId, icon) {
+  DB.institutions = DB.institutions.map(i => i.id===instId ? {...i, icon} : i);
+  await persist(); renderManage(); renderLatestBreakdown();
+}
+// Close icon picker on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.inst-icon') && !e.target.closest('[id^="icon-picker-"]')) {
+    document.querySelectorAll('[id^="icon-picker-"]').forEach(p => p.style.display='none');
+  }
+});
 function toggleAddAcct(instId) {
   const el = document.getElementById('add-acct-'+instId); if (!el) return;
   const open = el.style.display==='block'; el.style.display = open?'none':'block';
@@ -649,7 +739,7 @@ async function saveNewInst() {
   const n=document.getElementById('m-inst-name').value.trim();
   if (!n) { setStatus('Enter an institution name.','err'); return; }
   if (!mPendingAccts.length) { setStatus('Add at least one account.','err'); return; }
-  DB.institutions.push({id:uid(),name:n,accounts:[...mPendingAccts]});
+  DB.institutions.push({id:uid(), name:n, icon:'🏦', accounts:[...mPendingAccts]});
   await persist(); mPendingAccts=[]; document.getElementById('m-inst-name').value='';
   document.getElementById('add-inst-form').style.display='none'; renderManage();
 }
@@ -668,12 +758,15 @@ function renderUpdStep() {
   if (pf) pf.style.width=Math.round(updIdx/updQueue.length*100)+'%';
   if (updIdx>=updQueue.length) { finishUpdate(); return; }
   const a=updQueue[updIdx];
+  // Find the institution to get its icon
+  const inst = DB.institutions.find(i=>i.id===a.instId);
+  const icon = inst?.icon || '🏦';
   const prev=DB.snapshots.length?DB.snapshots[DB.snapshots.length-1]:null;
   const prevVal=prev&&prev.values[a.id]!==undefined?prev.values[a.id]:null;
   const el=document.getElementById('upd-form'); if (!el) return;
   el.innerHTML=`
     <div class="upd-step">
-      <div class="upd-inst">${a.instName}</div>
+      <div class="upd-inst"><span class="upd-inst-icon">${icon}</span>${a.instName}</div>
       <div class="upd-acct">${a.name}</div>
       <div style="margin-bottom:10px"><span class="${tagCls(a.type)}">${TAGS[a.type]}</span></div>
       <div class="upd-prev">${prevVal!==null?'Previous: <strong>'+fmt(prevVal)+'</strong>':'First entry for this account'}</div>
@@ -688,7 +781,13 @@ function renderUpdStep() {
         <button class="btn btn-primary btn-sm" onclick="saveAcct()">Next →</button>
       </div>
     </div>`;
-  setTimeout(() => { const i=document.getElementById('upd-val'); if(i) i.focus(); }, 50);
+  setTimeout(() => {
+    const i=document.getElementById('upd-val');
+    if(i) {
+      i.focus();
+      i.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();saveAcct();} });
+    }
+  }, 50);
 }
 function saveAcct() {
   const inp=document.getElementById('upd-val'); const v=inp?parseFloat(inp.value):NaN;
