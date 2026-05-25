@@ -237,7 +237,7 @@ tr:hover td{background:var(--bg2)}
         <button class="btn btn-sm" onclick="exportCSV()">↓ Export CSV</button>
       </div>
       <div class="tbl-wrap"><table>
-        <thead><tr><th>Date</th><th>Net worth</th><th>Change ($)</th><th>Change (%)</th><th>Days since</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Net worth</th><th>Change ($)</th><th>Change (%)</th><th>Interval (days)</th><th></th></tr></thead>
         <tbody id="hist-tbody"></tbody>
       </table></div>
     </div>
@@ -651,7 +651,7 @@ async function deleteEntry(date, source) {
 }
 function exportCSV() {
   const entries = allEntries();
-  const rows = [['Date','Net worth','Change ($)','Change (%)','Days since']];
+  const rows = [['Date','Net worth','Change ($)','Change (%)','Interval (days)']];
   entries.forEach((e,i) => {
     const prev = i>0?entries[i-1]:null;
     const diff = prev?e.nw-prev.nw:null;
