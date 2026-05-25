@@ -1,4 +1,4 @@
-const CACHE = 'nwt-v5';
+const CACHE = 'nwt-v6';
 const ASSETS = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', e => {
