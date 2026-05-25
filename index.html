@@ -665,10 +665,10 @@ function exportCSV() {
 
 // ─── Accounts tab ─────────────────────────────────────────────────────────────
 
-// Render the icon element — image if base64, emoji fallback otherwise
+// Render the icon element — image if uploaded, emoji fallback otherwise
 function instIconHTML(inst, size=28) {
   if (inst.iconData) {
-    return `<img src="${inst.iconData}" style="width:${size}px;height:${size}px;border-radius:6px;object-fit:cover;display:block" />`;
+    return `<img src="${inst.iconData}" style="width:${size}px;height:${size}px;border-radius:6px;object-fit:cover;display:block;background:var(--bg2)" />`;
   }
   return inst.icon || '🏦';
 }
@@ -714,27 +714,11 @@ function handleIconUpload(instId, input) {
   const file = input.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = async e => {
-    // Resize to 64×64 via canvas to keep stored data small
-    const img = new Image();
-    img.onload = async () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 64; canvas.height = 64;
-      const ctx = canvas.getContext('2d');
-      // Fill white background for logos with transparency
-      ctx.fillStyle = '#ffffff00'; // transparent
-      ctx.fillRect(0, 0, 64, 64);
-      // Draw image centered/cropped square
-      const size = Math.min(img.width, img.height);
-      const sx = (img.width - size) / 2;
-      const sy = (img.height - size) / 2;
-      ctx.drawImage(img, sx, sy, size, size, 0, 0, 64, 64);
-      const iconData = canvas.toDataURL('image/png');
-      DB.institutions = DB.institutions.map(i => i.id===instId ? {...i, iconData, icon:null} : i);
-      await persist();
-      renderManage();
-      renderLatestBreakdown();
-    };
-    img.src = e.target.result;
+    const iconData = e.target.result;
+    DB.institutions = DB.institutions.map(i => i.id===instId ? {...i, iconData, icon:null} : i);
+    await persist();
+    renderManage();
+    renderLatestBreakdown();
   };
   reader.readAsDataURL(file);
 }
