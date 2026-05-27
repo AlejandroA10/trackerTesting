@@ -1277,27 +1277,38 @@ function renderAllocByCat(positions, total, equityTotal) {
     const rows = Object.values(tickerMap).sort((a,b)=>b.value-a.value).map(p => `
       <tr>
         <td>${p.ticker}</td>
-        <td style="color:var(--text2)">${[...p.accounts].join(', ')}</td>
         <td style="font-weight:500">${fmt(p.value)}</td>
         <td style="color:var(--text3)">${total>0?Math.round(p.value/total*100):0}%</td>
       </tr>`).join('');
 
     return `<div class="tbl-wrap" style="margin-bottom:12px">
-      <div style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:9px 13px;background:var(--bg2);border-bottom:1px solid var(--border)">
+      <div style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:9px 13px;background:var(--bg2);border-bottom:1px solid var(--border);cursor:pointer" onclick="toggleAllocCat('alloc-cat-${cat}')">
         <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600">
           <span style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0;display:inline-block"></span>
           ${ALLOC_CATS[cat]?.label||cat}
         </div>
         <div style="text-align:center">${driftHTML}</div>
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:10px">
           <span style="font-size:12px;color:var(--text3);font-family:var(--mono)">${catPct.toFixed(1)}%</span>
           <span style="font-size:13px;font-weight:500;font-family:var(--mono)">${fmt(catTotal)}</span>
+          <span style="font-size:13px;color:var(--text3)" id="alloc-cat-${cat}-chevron">▼</span>
         </div>
       </div>
-      <table><thead><tr><th>Ticker / Name</th><th>Account(s)</th><th>Value</th><th>% of total</th></tr></thead>
-      <tbody>${rows}</tbody></table>
+      <div id="alloc-cat-${cat}" style="display:none">
+        <table><thead><tr><th>Ticker / Name</th><th>Value</th><th>% of total</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div>
     </div>`;
   }).join('');
+}
+
+function toggleAllocCat(id) {
+  const el = document.getElementById(id);
+  const chevron = document.getElementById(id+'-chevron');
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (chevron) chevron.textContent = open ? '▼' : '▲';
 }
 
 // ─── Allocation update flow ───────────────────────────────────────────────────
