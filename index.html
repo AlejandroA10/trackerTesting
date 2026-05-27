@@ -724,7 +724,7 @@ function renderMetrics() {
 function setRange(r) {
   activeRange = r;
   document.querySelectorAll('.cf-btn').forEach(b => b.classList.toggle('active', b.textContent===r));
-  renderCharts();
+  renderLineChart();
 }
 
 function filteredEntries() {
@@ -739,7 +739,6 @@ function filteredEntries() {
   else if (activeRange === '5Y') { cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear()-5); }
   const cutStr = cutoff.toISOString().split('T')[0];
   const filtered = all.filter(e => e.date >= cutStr);
-  // Always include one point before cutoff for context if available
   if (filtered.length < all.length) {
     const before = all.filter(e => e.date < cutStr);
     if (before.length) filtered.unshift(before[before.length-1]);
@@ -747,7 +746,9 @@ function filteredEntries() {
   return filtered;
 }
 
-function renderCharts() {
+function renderCharts() { renderLineChart(); renderPieChart(); }
+
+function renderLineChart() {
   const entries = filteredEntries();
   const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
   const gridC = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.055)';
@@ -759,7 +760,6 @@ function renderCharts() {
   if (ll) ll.innerHTML = '<span class="legend-item"><span class="legend-dot" style="background:#1D9E75"></span>Total net worth</span>';
   const lc = document.getElementById('lineChart');
   if (lc && entries.length) {
-    // Build annotation plugins for goal lines if any goals exist
     const annotations = {};
     DB_goals.forEach((g,i) => {
       annotations['goal'+i] = {
@@ -790,14 +790,17 @@ function renderCharts() {
           callback:v=>{if(Math.abs(v)>=1e6)return'$'+(v/1e6).toFixed(1)+'M';if(Math.abs(v)>=1e3)return'$'+(v/1e3).toFixed(0)+'k';return'$'+v;}}}
       }}});
   }
+}
 
+function renderPieChart() {
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const bgC = isDark ? '#1E1E1C' : '#F3F3EF';
   if (pieChart) { pieChart.destroy(); pieChart = null; }
   const pl = document.getElementById('pie-legend');
   const pc = document.getElementById('pieChart');
   const latestSnap = DB.snapshots.length ? DB.snapshots[DB.snapshots.length-1] : null;
   const accts = allAccts();
   if (latestSnap && accts.length) {
-    // Pie shows positive asset buckets only (taxable, deferred, roth)
     const buckets = {taxable:0, taxdeferred:0, taxfree:0};
     accts.forEach(a => { if (buckets.hasOwnProperty(a.type)) buckets[a.type] += Math.max(0, latestSnap.values[a.id]||0); });
     const total = Object.values(buckets).reduce((s,v)=>s+v, 0);
