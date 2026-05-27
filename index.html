@@ -152,6 +152,30 @@ tr:hover td{background:var(--bg2)}
 .inst-icon-wrap:hover .inst-icon-btn{opacity:0.5}
 .inst-icon-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--text);opacity:0;transition:opacity .15s;pointer-events:none;background:var(--bg2);border-radius:6px;border:1px solid var(--border2)}
 .inst-icon-wrap:hover .inst-icon-overlay{opacity:1}
+/* Allocation tags */
+.tag-alloc{font-size:11px;padding:2px 8px;border-radius:99px;font-weight:500;font-family:var(--mono);color:#fff;white-space:nowrap}
+/* Asset bubbles on accounts tab */
+.asset-bubbles{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
+.asset-bubble{font-size:11px;padding:2px 9px;border-radius:99px;font-weight:500;font-family:var(--mono);color:#fff;white-space:nowrap;cursor:default}
+/* Top holdings */
+.holding-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)}
+.holding-row:last-child{border-bottom:none}
+.holding-name{font-size:13px;font-weight:500;color:var(--text)}
+.holding-sub{font-size:11px;color:var(--text3);margin-top:1px}
+.holding-right{text-align:right}
+.holding-val{font-size:13px;font-weight:500;font-family:var(--mono)}
+.holding-pct{font-size:11px;font-family:var(--mono);color:var(--text3)}
+/* Alloc category sections */
+.alloc-cat-hdr{display:flex;align-items:center;justify-content:space-between;padding:8px 0 6px;border-bottom:1px solid var(--border);margin-bottom:4px;margin-top:12px}
+.alloc-cat-hdr:first-child{margin-top:0}
+.alloc-cat-name{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text)}
+.alloc-cat-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.alloc-cat-total{font-size:13px;font-family:var(--mono);font-weight:500}
+/* Alloc update positions */
+.alloc-pos-row{display:grid;grid-template-columns:2fr 1fr 1fr 140px auto;gap:6px;align-items:end;margin-bottom:6px}
+.alloc-pos-row input,.alloc-pos-row select{height:32px;font-size:13px}
+.alloc-pos-header{display:grid;grid-template-columns:2fr 1fr 1fr 140px auto;gap:6px;margin-bottom:4px}
+.alloc-pos-header span{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
 </style>
 </head>
 <body>
@@ -211,6 +235,7 @@ tr:hover td{background:var(--bg2)}
   <div id="screen-home" class="screen">
     <div class="nav-bar">
       <button class="nav-tab active" id="tab-dashboard" onclick="showTab('dashboard')">Dashboard</button>
+      <button class="nav-tab" id="tab-allocation" onclick="showTab('allocation')">Allocation</button>
       <button class="nav-tab" id="tab-history" onclick="showTab('history')">History</button>
       <button class="nav-tab" id="tab-accounts" onclick="showTab('accounts')">Accounts</button>
     </div>
@@ -285,6 +310,34 @@ tr:hover td{background:var(--bg2)}
       </div>
     </div>
 
+    <div id="pane-allocation" style="display:none">
+      <!-- Summary metrics -->
+      <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="metric"><div class="metric-lbl">Investable assets</div><div class="metric-val" id="al-total">—</div><div class="metric-sub" id="al-total-sub"></div></div>
+        <div class="metric"><div class="metric-lbl">Equity %</div><div class="metric-val" id="al-equity-pct">—</div><div class="metric-sub" id="al-equity-sub"></div></div>
+        <div class="metric"><div class="metric-lbl">Last updated</div><div class="metric-val" id="al-date">—</div><div class="metric-sub" id="al-date-sub"></div></div>
+      </div>
+      <!-- Charts row -->
+      <div class="charts-row" style="grid-template-columns:1fr 210px">
+        <div class="chart-box">
+          <div class="chart-lbl">Equity allocation over time</div>
+          <div class="chart-wrap"><canvas id="allocChart" role="img" aria-label="Equity allocation over time stacked area chart"></canvas></div>
+          <div class="legend" id="alloc-legend"></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-lbl">Top 5 holdings</div>
+          <div id="top-holdings"></div>
+        </div>
+      </div>
+      <!-- Table grouped by allocation category -->
+      <div class="sec-label">By allocation</div>
+      <div id="alloc-by-cat"></div>
+      <!-- Update button — allocation tab only -->
+      <div class="bottom-bar">
+        <button class="btn btn-primary" onclick="startAllocUpdate()">↻ Update allocation</button>
+      </div>
+    </div>
+
     <div id="pane-history" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div class="sec-label" style="margin:0">All entries</div>
@@ -329,7 +382,7 @@ tr:hover td{background:var(--bg2)}
       </div>
     </div>
 
-    <div class="bottom-bar">
+    <div class="bottom-bar" id="main-bottom-bar">
       <button class="btn btn-ghost" onclick="showTab('dashboard')">View dashboard</button>
       <button class="btn btn-primary" onclick="startUpdate()">↻ Update values</button>
     </div>
@@ -354,6 +407,14 @@ tr:hover td{background:var(--bg2)}
     <div class="page-title">Update accounts</div>
     <div class="progress-bar"><div class="progress-fill" id="upd-progress"></div></div>
     <div id="upd-form"></div>
+  </div>
+
+  <!-- ── ALLOCATION UPDATE ── -->
+  <div id="screen-alloc-update" class="screen">
+    <div class="page-title">Update allocation</div>
+    <div class="page-sub">Review and update positions for each account. Add new positions or remove old ones, then hit Next.</div>
+    <div class="progress-bar"><div class="progress-fill" id="alloc-progress"></div></div>
+    <div id="alloc-upd-form"></div>
   </div>
 </div>
 
@@ -389,14 +450,38 @@ const PIE_C = {taxable:'#378ADD',taxdeferred:'#EF9F27',taxfree:'#1D9E75'};
 const PIE_L = {taxable:'Taxable',taxdeferred:'Tax-deferred',taxfree:'Tax-free (Roth)'};
 const DB_KEY = 'nwt-v1';
 
+const ALLOC_CATS = {
+  us_stock:    {label:'U.S. Stock Market',            color:'#2563EB'},
+  dev_ex_us:   {label:'Developed Markets ex U.S.',    color:'#0891B2'},
+  em:          {label:'Emerging Markets',             color:'#7C3AED'},
+  us_scv:      {label:'U.S. Small Cap Value',         color:'#D97706'},
+  intl_scv:    {label:'Intl Small Cap Value',         color:'#EA580C'},
+  bonds:       {label:'Bonds',                        color:'#16A34A'},
+  cash_gold:   {label:'Cash & Gold',                  color:'#CA8A04'},
+  other:       {label:'Other',                        color:'#6B7280'},
+};
+
+// Equity categories with target allocations (% of total equity)
+const EQUITY_TARGETS = {
+  us_stock:  42,
+  dev_ex_us: 24,
+  em:        12,
+  us_scv:    14,
+  intl_scv:  8,
+};
+const EQUITY_CATS = Object.keys(EQUITY_TARGETS);
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let DB = {institutions:[], history:[], snapshots:[]};
 let pendingAccts = [], mPendingAccts = [], importedRows = [];
 let updQueue = [], updIdx = 0, updDate = '', updVals = {};
-let lineChart = null, pieChart = null, stackChart = null, deferredInstall = null;
-let activeRange = 'All'; // time filter for line chart
-let snapshotExpanded = true; // toggle state for snapshot section
-let DB_goals = []; // separate goals array loaded/saved independently
+let lineChart = null, pieChart = null, stackChart = null, allocChart = null, allocEquityChart = null, deferredInstall = null;
+let activeRange = 'All';
+let snapshotExpanded = true;
+let assetsVisible = true; // tab-wide asset bubble toggle
+let DB_goals = [];
+let DB_alloc = {}; // {acctId: [{id, ticker, shares, price, category}]}
+let allocUpdQueue = [], allocUpdIdx = 0;
 
 // ─── Persistence (IndexedDB) ──────────────────────────────────────────────────
 function openIDB() {
@@ -428,6 +513,7 @@ async function persist() {
   try {
     await idbSet(DB_KEY, JSON.stringify(DB));
     await idbSet('nwt-goals', JSON.stringify(DB_goals));
+    await idbSet('nwt-alloc', JSON.stringify(DB_alloc));
     setStatus('Saved', 'ok');
   } catch(e) { setStatus('Save error: ' + e.message, 'err'); }
 }
@@ -437,6 +523,8 @@ async function loadDB() {
     if (d) DB = JSON.parse(d);
     const g = await idbGet('nwt-goals');
     if (g) DB_goals = JSON.parse(g);
+    const a = await idbGet('nwt-alloc');
+    if (a) DB_alloc = JSON.parse(a);
   } catch(e) { setStatus('Load error: ' + e.message, 'err'); }
 }
 
@@ -570,12 +658,16 @@ async function finishSetup() {
 
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 function showTab(tab) {
-  ['dashboard','history','accounts'].forEach(t => {
+  ['dashboard','allocation','history','accounts'].forEach(t => {
     const p = document.getElementById('pane-'+t); if (p) p.style.display = t===tab?'block':'none';
     const tb = document.getElementById('tab-'+t); if (tb) tb.classList.toggle('active', t===tab);
   });
+  // Hide main bottom bar on allocation tab (it has its own)
+  const mbb = document.getElementById('main-bottom-bar');
+  if (mbb) mbb.style.display = tab==='allocation' ? 'none' : 'flex';
   if (tab==='history') renderHistory();
   if (tab==='accounts') renderManage();
+  if (tab==='allocation') renderAllocation();
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -927,6 +1019,413 @@ async function deleteGoal(i) {
   await persist(); renderGoals(); renderCharts();
 }
 
+// ─── Asset visibility toggle ──────────────────────────────────────────────────
+function toggleAssetVis() {
+  assetsVisible = !assetsVisible;
+  renderManage();
+}
+
+// Quick-add redirects to allocation update for one account
+function quickAddAsset(instId, acctId) {
+  const acct = allAccts().find(a => a.id === acctId);
+  if (!acct) return;
+  allocUpdQueue = [acct];
+  allocUpdIdx = 0;
+  showScreen('screen-alloc-update');
+  renderAllocUpdStep();
+}
+
+// ─── Allocation tab rendering ─────────────────────────────────────────────────
+function allAllocPositions() {
+  const accts = allAccts();
+  const positions = [];
+  accts.forEach(a => {
+    (DB_alloc[a.id] || []).forEach(pos => {
+      positions.push({...pos, acctId:a.id, acctName:a.name, instName:a.instName});
+    });
+  });
+  return positions;
+}
+
+function renderAllocation() {
+  const positions = allAllocPositions();
+  const total = positions.reduce((s,p) => s + (parseFloat(p.shares)*parseFloat(p.price)), 0);
+  const hasData = positions.length > 0;
+  const setA = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+  const setAC = (id,c) => { const e=document.getElementById(id); if(e) e.className='metric-val '+c; };
+  const setAS = (id,v,c) => { const e=document.getElementById(id); if(e){e.textContent=v;if(c)e.style.color=c;else e.style.color='';} };
+
+  // Investable total
+  setA('al-total', hasData ? fmt(total) : '—');
+  setA('al-total-sub', hasData
+    ? new Set(positions.map(p=>p.acctId)).size + ' account(s) · ' + positions.reduce((s,p)=>{const t=p.ticker.trim();return s.add(t),s},new Set()).size + ' positions'
+    : 'No positions yet');
+
+  // Equity %
+  const equityTotal = positions
+    .filter(p => EQUITY_CATS.includes(p.category))
+    .reduce((s,p) => s + parseFloat(p.shares)*parseFloat(p.price), 0);
+  const equityPct = total > 0 ? (equityTotal/total*100) : 0;
+  setA('al-equity-pct', hasData ? Math.round(equityPct)+'%' : '—');
+  setAC('al-equity-pct', '');
+  setA('al-equity-sub', hasData ? fmt(equityTotal)+' in equities' : '');
+
+  // Last updated — derive from DB_alloc_history or just flag as "on file"
+  const lastUpdDate = getLastAllocUpdateDate();
+  if (!hasData) {
+    setA('al-date', '—');
+    setAS('al-date-sub', 'No data yet');
+  } else if (lastUpdDate) {
+    const d = new Date(lastUpdDate+'T00:00:00');
+    setA('al-date', d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}));
+    const daysSince = Math.round((new Date()-d)/864e5);
+    const nextDue = new Date(d); nextDue.setDate(nextDue.getDate()+90);
+    const overdue = daysSince > 90;
+    const nextStr = overdue
+      ? 'Overdue — ' + daysSince + ' days since last update'
+      : 'Next update due ' + nextDue.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    setAS('al-date-sub', nextStr, overdue ? 'var(--red)' : '');
+  } else {
+    setA('al-date', 'On file');
+    setAS('al-date-sub', 'Update quarterly');
+  }
+
+  renderAllocChart(positions, total, equityTotal);
+  renderTopHoldings(positions, total);
+  renderAllocByCat(positions, total, equityTotal);
+}
+
+function getLastAllocUpdateDate() {
+  // Store last update date in DB_alloc under a special key
+  return DB_alloc['_lastUpdated'] || null;
+}
+
+function renderAllocChart(positions, total, equityTotal) {
+  if (allocChart) { allocChart.destroy(); allocChart = null; }
+  const canvas = document.getElementById('allocChart');
+  const legendEl = document.getElementById('alloc-legend');
+  if (!canvas) return;
+
+  // Build equity-only stacked area chart over quarterly snapshots
+  // We need DB_alloc_snapshots for history — use DB_alloc['_snapshots'] array
+  const snapshots = DB_alloc['_snapshots'] || [];
+  const equitySnaps = snapshots.filter(s => {
+    const vals = s.catTotals || {};
+    return EQUITY_CATS.some(k => (vals[k]||0) > 0);
+  });
+
+  // Always include current state as the latest point
+  const catTotals = {};
+  positions.forEach(p => {
+    const val = parseFloat(p.shares)*parseFloat(p.price);
+    catTotals[p.category] = (catTotals[p.category]||0) + val;
+  });
+  const currentEquityTotal = EQUITY_CATS.reduce((s,k)=>s+(catTotals[k]||0),0);
+
+  // Build chart data points: historical snaps + current
+  const allPoints = [...equitySnaps];
+  // Add current if not already stored
+  if (!allPoints.length || allPoints[allPoints.length-1].date !== (DB_alloc['_lastUpdated']||'')) {
+    if (currentEquityTotal > 0) {
+      allPoints.push({date: DB_alloc['_lastUpdated']||'current', catTotals});
+    }
+  }
+
+  if (!allPoints.length || currentEquityTotal === 0) {
+    if (legendEl) legendEl.innerHTML = '<span style="font-size:12px;color:var(--text3)">No equity positions yet</span>';
+    return;
+  }
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridC = isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.055)';
+  const textC = isDark?'rgba(255,255,255,0.4)':'rgba(0,0,0,0.4)';
+  const bgC   = isDark?'#1E1E1C':'#F3F3EF';
+
+  const labels = allPoints.map(s => {
+    if (s.date === 'current') return 'Now';
+    return new Date(s.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',year:'2-digit'});
+  });
+
+  const activeCats = EQUITY_CATS.filter(k => allPoints.some(s=>(s.catTotals[k]||0)>0));
+
+  if (legendEl) legendEl.innerHTML = activeCats.map(k => {
+    const target = EQUITY_TARGETS[k];
+    return `<span class="legend-item"><span class="legend-dot" style="background:${ALLOC_CATS[k].color}"></span>${ALLOC_CATS[k].label} <span style="color:var(--text3)">(target ${target}%)</span></span>`;
+  }).join('');
+
+  const datasets = activeCats.map((k, i) => ({
+    label: ALLOC_CATS[k].label,
+    data: allPoints.map(s => {
+      const eqTot = EQUITY_CATS.reduce((sum,ek)=>sum+(s.catTotals[ek]||0),0);
+      return eqTot > 0 ? parseFloat(((s.catTotals[k]||0)/eqTot*100).toFixed(1)) : 0;
+    }),
+    borderColor: ALLOC_CATS[k].color,
+    backgroundColor: ALLOC_CATS[k].color + (isDark?'59':'40'),
+    fill: i===0?'origin':'-1',
+    tension: 0.3,
+    pointRadius: allPoints.length<=10?4:2,
+    pointHoverRadius:6,
+    pointBackgroundColor: ALLOC_CATS[k].color,
+    pointBorderColor: bgC, pointBorderWidth:2,
+  }));
+
+  allocChart = new Chart(canvas, {
+    type:'line', data:{labels, datasets},
+    options:{responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false}, tooltip:{callbacks:{
+        label: c => ' '+c.dataset.label+': '+c.parsed.y+'%',
+        footer: items => {
+          // Show target comparison in tooltip footer
+          return items.map(i => {
+            const cat = activeCats[i.datasetIndex];
+            const target = EQUITY_TARGETS[cat];
+            const diff = parseFloat((i.parsed.y - target).toFixed(1));
+            const sign = diff>=0?'+':'';
+            return `  ${ALLOC_CATS[cat].label}: ${sign}${diff}% vs ${target}% target`;
+          }).join('\n');
+        }
+      }}},
+      scales:{
+        x:{grid:{color:gridC},ticks:{color:textC,font:{size:11}}},
+        y:{grid:{color:gridC},ticks:{color:textC,font:{size:11},callback:v=>v+'%'},
+          min:0,max:100}
+      }
+    }
+  });
+}
+
+function renderTopHoldings(positions, total) {
+  const el = document.getElementById('top-holdings'); if (!el) return;
+  if (!positions.length) { el.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">No positions yet</div>'; return; }
+
+  // Aggregate by ticker (case-insensitive) across all accounts
+  const tickerMap = {};
+  positions.forEach(p => {
+    const key = p.ticker.trim().toUpperCase();
+    if (!tickerMap[key]) tickerMap[key] = {ticker:p.ticker.trim(), value:0, category:p.category};
+    tickerMap[key].value += parseFloat(p.shares)*parseFloat(p.price);
+    // Keep the category of the largest lot
+    if (parseFloat(p.shares)*parseFloat(p.price) > tickerMap[key].value - parseFloat(p.shares)*parseFloat(p.price)) {
+      tickerMap[key].category = p.category;
+    }
+  });
+
+  const sorted = Object.values(tickerMap).sort((a,b)=>b.value-a.value).slice(0,5);
+  el.innerHTML = sorted.map(p => {
+    const pct = total > 0 ? Math.round(p.value/total*100) : 0;
+    const color = ALLOC_CATS[p.category]?.color || '#6B7280';
+    return `<div class="holding-row">
+      <div>
+        <div class="holding-name" style="display:flex;align-items:center;gap:6px">
+          <span style="width:8px;height:8px;border-radius:2px;background:${color};flex-shrink:0;display:inline-block"></span>${p.ticker}
+        </div>
+        <div class="holding-sub">${ALLOC_CATS[p.category]?.label||p.category}</div>
+      </div>
+      <div class="holding-right">
+        <div class="holding-val">${fmt(p.value)}</div>
+        <div class="holding-pct">${pct}% of portfolio</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderAllocByCat(positions, total, equityTotal) {
+  const el = document.getElementById('alloc-by-cat'); if (!el) return;
+  if (!positions.length) {
+    el.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">No positions yet. Click "Update allocation" to add your holdings.</div>';
+    return;
+  }
+  const catMap = {};
+  positions.forEach(p => {
+    const val = parseFloat(p.shares)*parseFloat(p.price);
+    if (!catMap[p.category]) catMap[p.category] = [];
+    catMap[p.category].push({...p, value:val});
+  });
+  const catsSorted = Object.entries(catMap).sort((a,b) =>
+    b[1].reduce((s,p)=>s+p.value,0) - a[1].reduce((s,p)=>s+p.value,0)
+  );
+  el.innerHTML = catsSorted.map(([cat, poses]) => {
+    const catTotal = poses.reduce((s,p)=>s+p.value,0);
+    const catPct = total > 0 ? (catTotal/total*100) : 0;
+    const color = ALLOC_CATS[cat]?.color || '#6B7280';
+
+    // Drift — only for equity categories
+    let driftHTML = '';
+    if (EQUITY_CATS.includes(cat) && equityTotal > 0) {
+      const target = EQUITY_TARGETS[cat];
+      const actual = catTotal/equityTotal*100;
+      const driftPct = actual - target;
+      const driftDollar = catTotal - (equityTotal * target/100);
+      const inTolerance = Math.abs(driftPct) <= 5;
+      const driftColor = inTolerance ? 'var(--text3)' : 'var(--red)';
+      const sign = driftPct >= 0 ? '+' : '';
+      const dollarSign = driftDollar >= 0 ? '+' : '-';
+      driftHTML = `<span style="font-size:12px;font-family:var(--mono);color:${driftColor}">
+        ${sign}${driftPct.toFixed(1)}% · ${dollarSign}${fmt(Math.abs(driftDollar)).replace('$','')} vs ${target}% target
+      </span>`;
+    }
+
+    // Aggregate rows by ticker within this category
+    const tickerMap = {};
+    poses.forEach(p => {
+      const key = p.ticker.trim().toUpperCase();
+      if (!tickerMap[key]) tickerMap[key] = {ticker:p.ticker.trim(), value:0, accounts:new Set()};
+      tickerMap[key].value += p.value;
+      tickerMap[key].accounts.add(p.acctName);
+    });
+    const rows = Object.values(tickerMap).sort((a,b)=>b.value-a.value).map(p => `
+      <tr>
+        <td>${p.ticker}</td>
+        <td style="color:var(--text2)">${[...p.accounts].join(', ')}</td>
+        <td style="font-weight:500">${fmt(p.value)}</td>
+        <td style="color:var(--text3)">${total>0?Math.round(p.value/total*100):0}%</td>
+      </tr>`).join('');
+
+    return `<div class="tbl-wrap" style="margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:9px 13px;background:var(--bg2);border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600">
+          <span style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0;display:inline-block"></span>
+          ${ALLOC_CATS[cat]?.label||cat}
+        </div>
+        <div style="text-align:center">${driftHTML}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--text3);font-family:var(--mono)">${catPct.toFixed(1)}%</span>
+          <span style="font-size:13px;font-weight:500;font-family:var(--mono)">${fmt(catTotal)}</span>
+        </div>
+      </div>
+      <table><thead><tr><th>Ticker / Name</th><th>Account(s)</th><th>Value</th><th>% of total</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>`;
+  }).join('');
+}
+
+// ─── Allocation update flow ───────────────────────────────────────────────────
+function startAllocUpdate() {
+  allocUpdQueue = allAccts().filter(a => a.type !== 'debt');
+  allocUpdIdx = 0;
+  if (!allocUpdQueue.length) { setStatus('No eligible accounts to update.','err'); return; }
+  showScreen('screen-alloc-update');
+  renderAllocUpdStep();
+}
+
+function posListHTML(positions) {
+  return positions.map((pos,i) => `
+    <div class="alloc-pos-row" id="pos-row-${i}">
+      <input value="${pos.ticker}" placeholder="Ticker / Name" oninput="updAllocField(${i},'ticker',this.value)" />
+      <input type="number" value="${pos.shares||''}" step="0.0001" placeholder="Shares" oninput="updAllocField(${i},'shares',this.value)" />
+      <input type="number" value="${pos.price||''}" step="0.01" placeholder="Price ($)" oninput="updAllocField(${i},'price',this.value)" />
+      <select onchange="updAllocField(${i},'category',this.value)">
+        ${Object.entries(ALLOC_CATS).map(([k,v])=>`<option value="${k}"${pos.category===k?' selected':''}>${v.label}</option>`).join('')}
+      </select>
+      <button class="btn-ghost" style="color:var(--red);height:32px" onclick="removeAllocPos(${i})">✕</button>
+    </div>`).join('');
+}
+
+function renderAllocUpdStep() {
+  const pf = document.getElementById('alloc-progress');
+  if (pf) pf.style.width = Math.round(allocUpdIdx/allocUpdQueue.length*100)+'%';
+  if (allocUpdIdx >= allocUpdQueue.length) { finishAllocUpdate(); return; }
+
+  const acct = allocUpdQueue[allocUpdIdx];
+  const inst = DB.institutions.find(i=>i.id===acct.instId);
+  const icon = instIconHTML(inst||{}, 18);
+  window._allocWorking = DB_alloc[acct.id] ? DB_alloc[acct.id].map(p=>({...p})) : [];
+
+  const el = document.getElementById('alloc-upd-form'); if (!el) return;
+  el.innerHTML = `
+    <div class="card">
+      <div class="upd-inst"><span class="upd-inst-icon">${icon}</span>${acct.instName}</div>
+      <div class="upd-acct">${acct.name}</div>
+      <div style="margin-bottom:12px"><span class="${tagCls(acct.type)}">${TAGS[acct.type]}</span></div>
+      <div class="alloc-pos-header" id="alloc-pos-header" style="${window._allocWorking.length?'':'display:none'}">
+        <span>Ticker / Name</span><span>Shares</span><span>Price</span><span>Category</span><span></span>
+      </div>
+      <div id="alloc-pos-list">${posListHTML(window._allocWorking)}</div>
+      <button class="btn btn-sm" onclick="addAllocPos()" style="margin-top:8px">+ Add position</button>
+    </div>
+    <div class="upd-nav">
+      <span class="upd-counter">${allocUpdIdx+1} / ${allocUpdQueue.length}</span>
+      <div class="row">
+        ${allocUpdIdx>0?'<button class="btn btn-sm" onclick="allocUpdIdx--;renderAllocUpdStep()">← Back</button>':''}
+        <button class="btn btn-sm" onclick="skipAllocAcct()">Skip</button>
+        <button class="btn btn-primary btn-sm" onclick="saveAllocAcct()">Next →</button>
+      </div>
+    </div>`;
+}
+
+function updAllocField(idx, field, val) {
+  if (window._allocWorking && window._allocWorking[idx]) window._allocWorking[idx][field] = val;
+}
+
+function reRenderPosList() {
+  const listEl = document.getElementById('alloc-pos-list'); if (!listEl) return;
+  listEl.innerHTML = posListHTML(window._allocWorking || []);
+  const hdr = document.getElementById('alloc-pos-header');
+  if (hdr) hdr.style.display = (window._allocWorking||[]).length ? '' : 'none';
+}
+
+function addAllocPos() {
+  if (!window._allocWorking) window._allocWorking = [];
+  window._allocWorking.push({id:uid(), ticker:'', shares:'', price:'', category:'us_stock'});
+  reRenderPosList();
+  setTimeout(()=>{
+    const rows = document.querySelectorAll('.alloc-pos-row');
+    if (rows.length) rows[rows.length-1].querySelector('input')?.focus();
+  }, 30);
+}
+
+function removeAllocPos(idx) {
+  if (!window._allocWorking) return;
+  window._allocWorking.splice(idx,1);
+  reRenderPosList();
+}
+
+function saveAllocAcct() {
+  const acct = allocUpdQueue[allocUpdIdx];
+  const working = (window._allocWorking || []).filter(p => String(p.ticker).trim());
+  for (const p of working) {
+    if (isNaN(parseFloat(p.shares)) || parseFloat(p.shares) < 0) { setStatus('Invalid share count.','err'); return; }
+    if (isNaN(parseFloat(p.price)) || parseFloat(p.price) < 0) { setStatus('Invalid price.','err'); return; }
+  }
+  DB_alloc[acct.id] = working.map(p => ({
+    id: p.id || uid(),
+    ticker: String(p.ticker).trim(),
+    shares: parseFloat(parseFloat(p.shares).toFixed(4)),
+    price: parseFloat(parseFloat(p.price).toFixed(2)),
+    category: p.category || 'us_stock'
+  }));
+  allocUpdIdx++;
+  renderAllocUpdStep();
+}
+
+function skipAllocAcct() { allocUpdIdx++; renderAllocUpdStep(); }
+
+async function finishAllocUpdate() {
+  // Record the date and take a category snapshot for the stacked chart
+  const today = new Date().toISOString().split('T')[0];
+  DB_alloc['_lastUpdated'] = today;
+
+  // Build category totals from current positions
+  const positions = allAllocPositions();
+  const catTotals = {};
+  positions.forEach(p => {
+    const val = parseFloat(p.shares)*parseFloat(p.price);
+    catTotals[p.category] = (catTotals[p.category]||0) + val;
+  });
+
+  // Append to snapshots history (keyed by date — replace if same day)
+  if (!DB_alloc['_snapshots']) DB_alloc['_snapshots'] = [];
+  const existing = DB_alloc['_snapshots'].findIndex(s=>s.date===today);
+  if (existing>=0) DB_alloc['_snapshots'][existing] = {date:today, catTotals};
+  else DB_alloc['_snapshots'].push({date:today, catTotals});
+  DB_alloc['_snapshots'].sort((a,b)=>a.date.localeCompare(b.date));
+
+  await persist();
+  showScreen('screen-home');
+  showTab('allocation');
+}
+
 // ─── History tab ──────────────────────────────────────────────────────────────
 function renderHistory() {
   const all = allEntries(); const entries = [...all].reverse();
@@ -996,7 +1495,21 @@ function renderManage() {
           <button class="btn btn-xs btn-danger" onclick="removeInstManage('${inst.id}')">Remove</button>
         </div>
       </div>
-      ${inst.accounts.map(a=>`<div class="acct-row"><div class="acct-info"><span style="font-size:14px">${a.name}</span><span class="${tagCls(a.type)}">${TAGS[a.type]}</span></div><button class="btn-ghost" onclick="removeAcctManage('${inst.id}','${a.id}')">✕</button></div>`).join('')}
+      ${inst.accounts.map(a => {
+        const isDebt = a.type === 'debt';
+        const assets = DB_alloc[a.id] || [];
+        const bubbles = assetsVisible && !isDebt && assets.length
+          ? `<div class="asset-bubbles">${assets.map(pos=>`<span class="asset-bubble" style="background:${ALLOC_CATS[pos.category]?.color||'#6B7280'}" title="${ALLOC_CATS[pos.category]?.label||''}">${pos.ticker}</span>`).join('')}</div>`
+          : '';
+        const addBtn = !isDebt
+          ? `<button class="btn-ghost" style="font-size:11px;color:var(--accent-dark)" onclick="quickAddAsset('${inst.id}','${a.id}')">+ asset</button>`
+          : '';
+        return `<div class="acct-row" style="flex-wrap:wrap">
+          <div class="acct-info" style="flex:1">${addBtn}<span style="font-size:14px">${a.name}</span><span class="${tagCls(a.type)}">${TAGS[a.type]}</span></div>
+          <button class="btn-ghost" onclick="removeAcctManage('${inst.id}','${a.id}')">✕</button>
+          ${bubbles ? `<div style="width:100%">${bubbles}</div>` : ''}
+        </div>`;
+      }).join('')}
       <div id="add-acct-${inst.id}" class="inline-form">
         <div class="g3">
           <div><label>Account name</label><input id="new-name-${inst.id}" placeholder="e.g. Roth IRA" /></div>
@@ -1007,7 +1520,21 @@ function renderManage() {
           </div>
         </div>
       </div>
+      <!-- Quick add asset inline form -->
+      <div id="quick-asset-${inst.id}-${inst.accounts.map(a=>a.id).join('-')}" style="display:none"></div>
     </div>`).join('');
+
+  // Asset visibility toggle button
+  const existingToggle = document.getElementById('asset-vis-toggle');
+  if (!existingToggle) {
+    const manageSection = document.getElementById('manage-list').parentElement;
+    const toggleBtn = document.createElement('div');
+    toggleBtn.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:10px';
+    toggleBtn.innerHTML = `<button class="btn btn-xs" id="asset-vis-toggle" onclick="toggleAssetVis()">${assetsVisible?'Hide assets ▲':'Show assets ▼'}</button>`;
+    manageSection.insertBefore(toggleBtn, document.getElementById('manage-list'));
+  } else {
+    existingToggle.textContent = assetsVisible ? 'Hide assets ▲' : 'Show assets ▼';
+  }
 }
 
 function triggerIconUpload(instId) {
@@ -1136,9 +1663,9 @@ function exportDB() {
     version: 1,
     exportedAt: new Date().toISOString(),
     db: DB,
-    goals: DB_goals
+    goals: DB_goals,
+    alloc: DB_alloc
   };
-  // Strip icon image data to keep file size reasonable — icons can be re-uploaded
   const clean = JSON.parse(JSON.stringify(payload));
   clean.db.institutions = clean.db.institutions.map(i => {
     const {iconData, ...rest} = i;
@@ -1159,23 +1686,24 @@ async function importDB(input) {
   reader.onload = async e => {
     try {
       const payload = JSON.parse(e.target.result);
-      // Validate it looks like our backup format
       if (!payload.db || !payload.db.institutions || !payload.db.history || !payload.db.snapshots) {
-        if (statusEl) { statusEl.textContent = 'Invalid backup file — does not look like a Net Worth Tracker export.'; statusEl.style.color='var(--red)'; }
+        if (statusEl) { statusEl.textContent = 'Invalid backup file.'; statusEl.style.color='var(--red)'; }
         return;
       }
       const instCount = payload.db.institutions.length;
       const histCount = payload.db.history.length;
       const snapCount = payload.db.snapshots.length;
       const goalCount = (payload.goals||[]).length;
+      const allocCount = Object.values(payload.alloc||{}).reduce((s,a)=>s+a.length,0);
       if (!confirm(`This will replace ALL your current data with the backup.\n\n` +
-        `Backup contains:\n• ${instCount} institution(s)\n• ${histCount} history entries\n• ${snapCount} snapshot(s)\n• ${goalCount} goal(s)\n\nContinue?`)) {
+        `Backup contains:\n• ${instCount} institution(s)\n• ${histCount} history entries\n• ${snapCount} snapshot(s)\n• ${goalCount} goal(s)\n• ${allocCount} allocation position(s)\n\nContinue?`)) {
         input.value = ''; return;
       }
       DB = payload.db;
       DB_goals = payload.goals || [];
+      DB_alloc = payload.alloc || {};
       await persist();
-      if (statusEl) { statusEl.textContent = 'Imported successfully — ' + histCount + ' history entries, ' + snapCount + ' snapshots.'; statusEl.style.color='var(--accent-dark)'; }
+      if (statusEl) { statusEl.textContent = 'Imported successfully.'; statusEl.style.color='var(--accent-dark)'; }
       renderManage();
       renderHome();
       input.value = '';
