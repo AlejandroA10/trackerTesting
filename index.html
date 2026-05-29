@@ -1258,14 +1258,12 @@ function renderAllocByCat(positions, total, equityTotal) {
     if (EQUITY_CATS.includes(cat) && equityTotal > 0) {
       const target = EQUITY_TARGETS[cat];
       const actual = catTotal/equityTotal*100;
-      const driftPct = actual - target;
       const driftDollar = catTotal - (equityTotal * target/100);
-      const inTolerance = Math.abs(driftPct) <= 5;
+      const inTolerance = Math.abs(actual - target) <= 5;
       const driftColor = inTolerance ? 'var(--text3)' : 'var(--red)';
-      const sign = driftPct >= 0 ? '+' : '';
       const dollarSign = driftDollar >= 0 ? '+' : '-';
       driftHTML = `<span style="font-size:12px;font-family:var(--mono);color:${driftColor}">
-        ${sign}${driftPct.toFixed(1)}% · ${dollarSign}${fmt(Math.abs(driftDollar)).replace('$','')} vs ${target}% target
+        ${actual.toFixed(1)}% current · ${dollarSign}${fmt(Math.abs(driftDollar)).replace('$','')} vs ${target}% target
       </span>`;
     }
 
