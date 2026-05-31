@@ -757,39 +757,113 @@ function renderLineChart() {
 
   if (lineChart) { lineChart.destroy(); lineChart = null; }
   const ll = document.getElementById('line-legend');
-  if (ll) ll.innerHTML = '<span class="legend-item"><span class="legend-dot" style="background:#1D9E75"></span>Total net worth</span>';
+  if (ll) ll.innerHTML = '<span class="legend-item"><span class="legend-dot" style="background:#1D9E75"></span>Net worth</span>' +
+    '<span class="legend-item"><span class="legend-dot" style="background:rgba(29,158,117,0.25);border:1px solid #1D9E75"></span>Rate of change ($/wk)</span>';
   const lc = document.getElementById('lineChart');
-  if (lc && entries.length) {
-    const annotations = {};
-    DB_goals.forEach((g,i) => {
-      annotations['goal'+i] = {
-        type: 'line', yMin: g.amount, yMax: g.amount,
-        borderColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)',
-        borderWidth: 1.5, borderDash: [5,4],
-        label: { content: g.name + ' ' + fmt(g.amount), display: true, position: 'start',
-          font: {size:10, family:'DM Mono,monospace'}, padding:{x:6,y:3},
-          color: isDark?'rgba(255,255,255,0.5)':'rgba(0,0,0,0.4)',
-          backgroundColor: 'transparent' }
-      };
-    });
-    lineChart = new Chart(lc, {type:'line', data:{
+  if (!lc || !entries.length) return;
+
+  // Compute per-week derivative for each entry
+  const derivData = entries.map((e, i) => {
+    if (i === 0) return null;
+    const prev = entries[i-1];
+    const spanDays = Math.max(1, Math.round(
+      (new Date(e.date+'T00:00:00') - new Date(prev.date+'T00:00:00')) / 864e5
+    ));
+    return parseFloat(((e.nw - prev.nw) / spanDays * 7).toFixed(0));
+  });
+
+  const annotations = {};
+  DB_goals.forEach((g,i) => {
+    annotations['goal'+i] = {
+      type: 'line', yMin: g.amount, yMax: g.amount,
+      borderColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)',
+      borderWidth: 1.5, borderDash: [5,4],
+      label: { content: g.name + ' ' + fmt(g.amount), display: true, position: 'start',
+        font: {size:10, family:'DM Mono,monospace'}, padding:{x:6,y:3},
+        color: isDark?'rgba(255,255,255,0.5)':'rgba(0,0,0,0.4)',
+        backgroundColor: 'transparent' }
+    };
+  });
+
+  // Bar colors: green for positive, red for negative
+  const barColors = derivData.map(v =>
+    v === null ? 'transparent'
+    : v >= 0 ? 'rgba(29,158,117,0.3)' : 'rgba(153,60,29,0.3)'
+  );
+  const barBorderColors = derivData.map(v =>
+    v === null ? 'transparent'
+    : v >= 0 ? 'rgba(29,158,117,0.7)' : 'rgba(153,60,29,0.7)'
+  );
+
+  lineChart = new Chart(lc, {
+    type: 'bar',
+    data: {
       labels: entries.map(e => new Date(e.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',year:'2-digit'})),
-      datasets:[{label:'Net worth', data:entries.map(e=>e.nw),
-        borderColor:'#1D9E75', backgroundColor:'rgba(29,158,117,0.07)', fill:true, tension:0.35,
-        pointBackgroundColor:'#1D9E75', pointBorderColor:bgC, pointBorderWidth:2,
-        pointRadius: entries.length<=40?4:2, pointHoverRadius:6}]
-    }, options:{responsive:true, maintainAspectRatio:false,
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:c=>' '+fmt(c.parsed.y)}},
+      datasets: [
+        {
+          type: 'line',
+          label: 'Net worth',
+          data: entries.map(e=>e.nw),
+          borderColor: '#1D9E75',
+          backgroundColor: 'rgba(29,158,117,0.07)',
+          fill: true, tension: 0.35,
+          pointBackgroundColor: '#1D9E75', pointBorderColor: bgC, pointBorderWidth: 2,
+          pointRadius: entries.length<=40?4:2, pointHoverRadius:6,
+          yAxisID: 'y',
+          order: 1,
+        },
+        {
+          type: 'bar',
+          label: 'Rate of change ($/wk)',
+          data: derivData,
+          backgroundColor: barColors,
+          borderColor: barBorderColors,
+          borderWidth: 1,
+          borderRadius: 2,
+          yAxisID: 'y2',
+          order: 2,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: c => {
+              if (c.dataset.label === 'Net worth') return ' Net worth: ' + fmt(c.parsed.y);
+              if (c.parsed.y === null) return null;
+              return ' Rate: ' + fmtD(c.parsed.y) + '/wk';
+            }
+          }
+        },
         annotation: Object.keys(annotations).length ? {annotations} : undefined
       },
-      scales:{
-        x:{grid:{color:gridC}, ticks:{color:textC,font:{size:11},maxTicksLimit:10}},
-        y:{grid:{color:gridC}, ticks:{color:textC,font:{size:11},
-          callback:v=>{if(Math.abs(v)>=1e6)return'$'+(v/1e6).toFixed(1)+'M';if(Math.abs(v)>=1e3)return'$'+(v/1e3).toFixed(0)+'k';return'$'+v;}}}
-      }}});
-  }
+      scales: {
+        x: { grid:{color:gridC}, ticks:{color:textC,font:{size:11},maxTicksLimit:10} },
+        y: {
+          position: 'left',
+          grid: {color:gridC},
+          ticks: {color:textC, font:{size:11},
+            callback:v=>{if(Math.abs(v)>=1e6)return'$'+(v/1e6).toFixed(1)+'M';if(Math.abs(v)>=1e3)return'$'+(v/1e3).toFixed(0)+'k';return'$'+v;}
+          }
+        },
+        y2: {
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: {
+            color: textC, font:{size:10},
+            callback: v => {
+              if (Math.abs(v) >= 1000) return (v>=0?'+':'-')+'$'+(Math.abs(v)/1000).toFixed(0)+'k';
+              return (v>=0?'+':'')+v;
+            }
+          }
+        }
+      }
+    }
+  });
 }
 
 function renderPieChart() {
