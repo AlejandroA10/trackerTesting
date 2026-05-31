@@ -236,6 +236,7 @@ tr:hover td{background:var(--bg2)}
     <div class="nav-bar">
       <button class="nav-tab active" id="tab-dashboard" onclick="showTab('dashboard')">Dashboard</button>
       <button class="nav-tab" id="tab-allocation" onclick="showTab('allocation')">Allocation</button>
+      <button class="nav-tab" id="tab-planning" onclick="showTab('planning')">Planning</button>
       <button class="nav-tab" id="tab-history" onclick="showTab('history')">History</button>
       <button class="nav-tab" id="tab-accounts" onclick="showTab('accounts')">Accounts</button>
     </div>
@@ -245,7 +246,7 @@ tr:hover td{background:var(--bg2)}
         <div class="metric"><div class="metric-lbl">Net worth</div><div class="metric-val" id="m-nw">—</div><div class="metric-sub" id="m-nw-sub"></div></div>
         <div class="metric"><div class="metric-lbl">All-time change</div><div class="metric-val" id="m-atc">—</div><div class="metric-sub" id="m-atc-sub"></div></div>
         <div class="metric"><div class="metric-lbl">Velocity</div><div class="metric-val" id="m-vel">—</div><div class="metric-sub" id="m-vel-sub"></div></div>
-        <div class="metric"><div class="metric-lbl">Days since update</div><div class="metric-val" id="m-days">—</div><div class="metric-sub" id="m-days-sub"></div></div>
+        <div class="metric"><div class="metric-lbl">Days since update</div><div class="metric-val" id="m-days">—</div><div class="metric-sub" id="m-days-sub"></div><button class="btn btn-primary btn-sm" onclick="startUpdate()" style="margin-top:10px;width:100%">Update</button></div>
       </div>
       <div class="charts-row">
         <div>
@@ -385,9 +386,38 @@ tr:hover td{background:var(--bg2)}
       </div>
     </div>
 
-    <div class="bottom-bar" id="main-bottom-bar">
-      <button class="btn btn-ghost" onclick="showTab('dashboard')">View dashboard</button>
-      <button class="btn btn-primary" onclick="startUpdate()">↻ Update values</button>
+    <!-- ── PLANNING ── -->
+    <div id="pane-planning" style="display:none">
+      <!-- Summary metrics -->
+      <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="metric"><div class="metric-lbl">4% monthly income</div><div class="metric-val" id="pl-income">—</div><div class="metric-sub" id="pl-income-sub"></div></div>
+        <div class="metric"><div class="metric-lbl">Coverage</div><div class="metric-val" id="pl-coverage">—</div><div class="metric-sub" id="pl-coverage-sub"></div></div>
+        <div class="metric"><div class="metric-lbl">Monthly expenses</div><div class="metric-val" id="pl-expenses">—</div><div class="metric-sub" id="pl-expenses-sub"></div></div>
+      </div>
+      <!-- 4% chart -->
+      <div class="chart-box" style="margin-bottom:1.5rem">
+        <div class="chart-lbl">4% rule — monthly retirement income over time</div>
+        <div class="chart-wrap"><canvas id="planningChart" role="img" aria-label="4% rule monthly income over time"></canvas></div>
+        <div class="legend" id="planning-legend"></div>
+      </div>
+      <!-- Expense tracker -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="sec-label" style="margin:0">Monthly expenses</div>
+        <button class="btn btn-xs" onclick="toggleExpenseForm()">+ Add expense</button>
+      </div>
+      <div id="expense-form" style="display:none;margin-bottom:12px">
+        <div class="card" style="padding:.875rem 1.25rem">
+          <div class="g3" style="margin-bottom:0">
+            <div><label>Expense name</label><input id="exp-name" placeholder="e.g. Rent, Groceries" /></div>
+            <div><label>Monthly amount ($)</label><input id="exp-amt" type="number" step="1" placeholder="e.g. 2200" /></div>
+            <div style="display:flex;align-items:flex-end;gap:4px">
+              <button class="btn btn-sm btn-primary" onclick="saveExpense()">✓</button>
+              <button class="btn btn-sm" onclick="toggleExpenseForm()">✕</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="expense-list"></div>
     </div>
   </div>
 
@@ -478,13 +508,14 @@ const EQUITY_CATS = Object.keys(EQUITY_TARGETS);
 let DB = {institutions:[], history:[], snapshots:[]};
 let pendingAccts = [], mPendingAccts = [], importedRows = [];
 let updQueue = [], updIdx = 0, updDate = '', updVals = {};
-let lineChart = null, pieChart = null, stackChart = null, allocChart = null, allocEquityChart = null, deferredInstall = null;
+let lineChart = null, pieChart = null, stackChart = null, allocChart = null, allocEquityChart = null, planningChart = null, deferredInstall = null;
 let activeRange = 'All';
 let showDeriv = false; // toggle between net worth line and rate-of-change bars
 let snapshotExpanded = true;
 let assetsVisible = true; // tab-wide asset bubble toggle
 let DB_goals = [];
-let DB_alloc = {}; // {acctId: [{id, ticker, shares, price, category}]}
+let DB_alloc = {};
+let DB_expenses = []; // [{id, name, amount}] monthly expense line items
 let allocUpdQueue = [], allocUpdIdx = 0;
 
 // ─── Persistence (IndexedDB) ──────────────────────────────────────────────────
@@ -518,6 +549,7 @@ async function persist() {
     await idbSet(DB_KEY, JSON.stringify(DB));
     await idbSet('nwt-goals', JSON.stringify(DB_goals));
     await idbSet('nwt-alloc', JSON.stringify(DB_alloc));
+    await idbSet('nwt-expenses', JSON.stringify(DB_expenses));
     setStatus('Saved', 'ok');
   } catch(e) { setStatus('Save error: ' + e.message, 'err'); }
 }
@@ -529,6 +561,8 @@ async function loadDB() {
     if (g) DB_goals = JSON.parse(g);
     const a = await idbGet('nwt-alloc');
     if (a) DB_alloc = JSON.parse(a);
+    const e = await idbGet('nwt-expenses');
+    if (e) DB_expenses = JSON.parse(e);
   } catch(e) { setStatus('Load error: ' + e.message, 'err'); }
 }
 
@@ -662,16 +696,14 @@ async function finishSetup() {
 
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 function showTab(tab) {
-  ['dashboard','allocation','history','accounts'].forEach(t => {
+  ['dashboard','allocation','planning','history','accounts'].forEach(t => {
     const p = document.getElementById('pane-'+t); if (p) p.style.display = t===tab?'block':'none';
     const tb = document.getElementById('tab-'+t); if (tb) tb.classList.toggle('active', t===tab);
   });
-  // Hide main bottom bar on allocation tab (it has its own)
-  const mbb = document.getElementById('main-bottom-bar');
-  if (mbb) mbb.style.display = tab==='allocation' ? 'none' : 'flex';
   if (tab==='history') renderHistory();
   if (tab==='accounts') renderManage();
   if (tab==='allocation') renderAllocation();
+  if (tab==='planning') renderPlanning();
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -1716,7 +1748,8 @@ function exportDB() {
     exportedAt: new Date().toISOString(),
     db: DB,
     goals: DB_goals,
-    alloc: DB_alloc
+    alloc: DB_alloc,
+    expenses: DB_expenses
   };
   const clean = JSON.parse(JSON.stringify(payload));
   clean.db.institutions = clean.db.institutions.map(i => {
@@ -1747,13 +1780,15 @@ async function importDB(input) {
       const snapCount = payload.db.snapshots.length;
       const goalCount = (payload.goals||[]).length;
       const allocCount = Object.values(payload.alloc||{}).reduce((s,a)=>s+a.length,0);
+      const expCount = (payload.expenses||[]).length;
       if (!confirm(`This will replace ALL your current data with the backup.\n\n` +
-        `Backup contains:\n• ${instCount} institution(s)\n• ${histCount} history entries\n• ${snapCount} snapshot(s)\n• ${goalCount} goal(s)\n• ${allocCount} allocation position(s)\n\nContinue?`)) {
+        `Backup contains:\n• ${instCount} institution(s)\n• ${histCount} history entries\n• ${snapCount} snapshot(s)\n• ${goalCount} goal(s)\n• ${allocCount} allocation position(s)\n• ${expCount} expense item(s)\n\nContinue?`)) {
         input.value = ''; return;
       }
       DB = payload.db;
       DB_goals = payload.goals || [];
       DB_alloc = payload.alloc || {};
+      DB_expenses = payload.expenses || [];
       await persist();
       if (statusEl) { statusEl.textContent = 'Imported successfully.'; statusEl.style.color='var(--accent-dark)'; }
       renderManage();
@@ -1764,6 +1799,188 @@ async function importDB(input) {
     }
   };
   reader.readAsText(file);
+}
+
+// ─── Planning tab ─────────────────────────────────────────────────────────────
+function totalMonthlyExpenses() {
+  return DB_expenses.reduce((s,e) => s + parseFloat(e.amount||0), 0);
+}
+
+function renderPlanning() {
+  const entries = allEntries();
+  const lastEntry = entries.length ? entries[entries.length-1] : null;
+  const currentNW = lastEntry ? lastEntry.nw : 0;
+  const monthlyIncome = currentNW * 0.04 / 12;
+  const totalExpenses = totalMonthlyExpenses();
+  const coverage = totalExpenses > 0 ? (monthlyIncome / totalExpenses * 100) : null;
+
+  const setP = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+  const setPC = (id,c) => { const e=document.getElementById(id); if(e) e.className='metric-val '+c; };
+  const setPS = (id,v,col) => { const e=document.getElementById(id); if(e){e.textContent=v;e.style.color=col||'';} };
+
+  setP('pl-income', lastEntry ? fmt(monthlyIncome) : '—');
+  setPS('pl-income-sub', lastEntry
+    ? 'Based on ' + fmt(currentNW) + ' net worth'
+    : 'No net worth data yet', '');
+
+  if (coverage !== null) {
+    setP('pl-coverage', Math.round(coverage) + '%');
+    setPC('pl-coverage', coverage >= 100 ? 'pos' : '');
+    setPS('pl-coverage-sub',
+      coverage >= 100
+        ? 'Expenses fully covered ✓'
+        : fmt(monthlyIncome) + ' of ' + fmt(totalExpenses) + ' covered', '');
+  } else {
+    setP('pl-coverage', '—');
+    setPC('pl-coverage', '');
+    setPS('pl-coverage-sub', totalExpenses === 0 ? 'Add expenses below' : '', '');
+  }
+
+  setP('pl-expenses', totalExpenses > 0 ? fmt(totalExpenses) + '/mo' : '—');
+  setPS('pl-expenses-sub', DB_expenses.length > 0
+    ? DB_expenses.length + ' item' + (DB_expenses.length!==1?'s':'')
+    : 'No expenses added yet', '');
+
+  renderPlanningChart(entries, totalExpenses);
+  renderExpenseList();
+}
+
+function renderPlanningChart(entries, totalExpenses) {
+  if (planningChart) { planningChart.destroy(); planningChart = null; }
+  const canvas = document.getElementById('planningChart');
+  const legendEl = document.getElementById('planning-legend');
+  if (!canvas || !entries.length) return;
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridC = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.055)';
+  const textC = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)';
+  const bgC   = isDark ? '#1E1E1C' : '#F3F3EF';
+
+  const labels = entries.map(e => new Date(e.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',year:'2-digit'}));
+  const incomeData = entries.map(e => parseFloat((e.nw * 0.04 / 12).toFixed(2)));
+
+  if (legendEl) {
+    legendEl.innerHTML = '<span class="legend-item"><span class="legend-dot" style="background:#1D9E75"></span>4% monthly income</span>' +
+      (totalExpenses > 0 ? '<span class="legend-item"><span class="legend-dot" style="background:rgba(0,0,0,0.2);border:1px dashed #888"></span>Target expenses</span>' : '');
+  }
+
+  // Build annotation for target expense line if set
+  const annotations = {};
+  if (totalExpenses > 0) {
+    annotations['target'] = {
+      type: 'line', yMin: totalExpenses, yMax: totalExpenses,
+      borderColor: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)',
+      borderWidth: 1.5, borderDash: [5,4],
+      label: {
+        content: fmt(totalExpenses) + '/mo target',
+        display: true, position: 'start',
+        font: {size:10, family:'DM Mono,monospace'}, padding:{x:6,y:3},
+        color: isDark?'rgba(255,255,255,0.5)':'rgba(0,0,0,0.4)',
+        backgroundColor: 'transparent'
+      }
+    };
+  }
+
+  planningChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: '4% monthly income',
+        data: incomeData,
+        borderColor: '#1D9E75',
+        backgroundColor: 'rgba(29,158,117,0.07)',
+        fill: true, tension: 0.35,
+        pointBackgroundColor: '#1D9E75', pointBorderColor: bgC, pointBorderWidth: 2,
+        pointRadius: entries.length<=40?4:2, pointHoverRadius:6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {display:false},
+        tooltip: {callbacks:{label:c=>' '+fmt(c.parsed.y)+'/mo'}},
+        annotation: Object.keys(annotations).length ? {annotations} : undefined
+      },
+      scales: {
+        x: {grid:{color:gridC}, ticks:{color:textC,font:{size:11},maxTicksLimit:10}},
+        y: {grid:{color:gridC}, ticks:{color:textC,font:{size:11},
+          callback:v=>{if(Math.abs(v)>=1000)return'$'+(v/1000).toFixed(0)+'k';return'$'+v;}},
+          min: 0
+        }
+      }
+    }
+  });
+}
+
+function renderExpenseList() {
+  const el = document.getElementById('expense-list'); if (!el) return;
+  if (!DB_expenses.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">No expenses added yet. Add your monthly expenses above to track coverage.</div>';
+    return;
+  }
+  const total = totalMonthlyExpenses();
+  el.innerHTML = `<div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Expense</th><th>Monthly</th><th></th></tr></thead>
+      <tbody>
+        ${DB_expenses.map((e,i) => `<tr>
+          <td>${e.name}</td>
+          <td style="font-family:var(--mono)">${fmt(parseFloat(e.amount))}</td>
+          <td style="text-align:right">
+            <button class="btn-ghost" style="font-size:12px" onclick="editExpense(${i})">Edit</button>
+            <button class="btn-ghost" style="color:var(--red);font-size:12px" onclick="deleteExpense(${i})">✕</button>
+          </td>
+        </tr>`).join('')}
+        <tr style="border-top:2px solid var(--border)">
+          <td style="font-weight:600">Total</td>
+          <td style="font-family:var(--mono);font-weight:600">${fmt(total)}/mo</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function toggleExpenseForm() {
+  const el = document.getElementById('expense-form'); if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (!open) {
+    document.getElementById('exp-name').value = '';
+    document.getElementById('exp-amt').value = '';
+    setTimeout(() => document.getElementById('exp-name')?.focus(), 30);
+  }
+}
+
+async function saveExpense() {
+  const name = document.getElementById('exp-name').value.trim();
+  const amt = parseFloat(document.getElementById('exp-amt').value);
+  if (!name) { setStatus('Enter an expense name.','err'); return; }
+  if (isNaN(amt) || amt < 0) { setStatus('Enter a valid amount.','err'); return; }
+  DB_expenses.push({id:uid(), name, amount:amt});
+  await persist();
+  toggleExpenseForm();
+  renderPlanning();
+}
+
+function editExpense(i) {
+  const e = DB_expenses[i]; if (!e) return;
+  const nameEl = document.getElementById('exp-name');
+  const amtEl = document.getElementById('exp-amt');
+  const formEl = document.getElementById('expense-form');
+  // Pre-fill and show form, remove the old entry on save
+  nameEl.value = e.name; amtEl.value = e.amount;
+  formEl.style.display = 'block';
+  DB_expenses.splice(i,1);
+  renderExpenseList();
+  nameEl.focus();
+}
+
+async function deleteExpense(i) {
+  DB_expenses.splice(i,1);
+  await persist();
+  renderPlanning();
 }
 
 // ─── PWA install prompt ───────────────────────────────────────────────────────
