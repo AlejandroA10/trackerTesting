@@ -401,10 +401,14 @@ tr:hover td{background:var(--bg2)}
         <div class="legend" id="planning-legend"></div>
       </div>
       <!-- Expense tracker -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding-top:1.25rem;border-top:1px solid var(--border)">
         <div class="sec-label" style="margin:0">Monthly expenses</div>
-        <button class="btn btn-xs" onclick="toggleExpenseForm()">+ Add expense</button>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn btn-xs" onclick="toggleExpenseForm()">+ Add expense</button>
+          <button class="btn-ghost" id="expense-collapse-btn" onclick="toggleExpenseList()" style="font-size:12px;color:var(--text3)">Show ▼</button>
+        </div>
       </div>
+      <div style="font-size:13px;font-family:var(--mono);color:var(--text2);margin-bottom:10px" id="expense-total-always"></div>
       <div id="expense-form" style="display:none;margin-bottom:12px">
         <div class="card" style="padding:.875rem 1.25rem">
           <div class="g3" style="margin-bottom:0">
@@ -417,48 +421,15 @@ tr:hover td{background:var(--bg2)}
           </div>
         </div>
       </div>
-      <div id="expense-list"></div>
+      <div id="expense-list-wrap" style="display:none">
+        <div id="expense-list"></div>
+      </div>
 
-      <!-- Labor vs Capital module -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
-        <div class="sec-label" style="margin:0">Labor vs capital</div>
-        <button class="btn btn-xs" onclick="toggleIncomeForm()">+ Log year</button>
+      <!-- YoY net worth changes -->
+      <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+        <div class="sec-label" style="margin-bottom:10px">Year-over-year net worth</div>
+        <div id="yoy-nw-table"></div>
       </div>
-      <div id="income-form" style="display:none;margin-bottom:12px">
-        <div class="card">
-          <div style="font-size:14px;font-weight:600;margin-bottom:12px">Annual income entry</div>
-          <div class="form-row cols2">
-            <div><label>Year</label><input id="inc-year" type="number" placeholder="e.g. 2024" style="height:36px" /></div>
-            <div><label>Take-home pay ($)</label><input id="inc-takehome" type="number" step="1" placeholder="What hit your bank account" /></div>
-          </div>
-          <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 8px">Retirement contributions</div>
-          <div class="form-row cols2">
-            <div><label>401k contributions ($)</label><input id="inc-401k" type="number" step="1" placeholder="Your contributions only" /></div>
-            <div><label>401k match (%)</label><input id="inc-401k-match" type="number" step="0.1" placeholder="e.g. 70" /></div>
-          </div>
-          <div class="form-row cols2">
-            <div><label>HSA contributions ($)</label><input id="inc-hsa" type="number" step="1" placeholder="Your contributions" /></div>
-            <div><label>HSA employer match ($)</label><input id="inc-hsa-match" type="number" step="1" placeholder="Flat company match" /></div>
-          </div>
-          <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 8px">Post-tax contributions</div>
-          <div class="form-row cols2">
-            <div><label>Post-tax contributions ($)</label><input id="inc-posttax" type="number" step="1" placeholder="ESPP, Roth, etc." /></div>
-            <div></div>
-          </div>
-          <div class="row" style="margin-top:10px">
-            <button class="btn btn-primary btn-sm" onclick="saveIncome()">Save</button>
-            <button class="btn btn-sm" onclick="toggleIncomeForm()">Cancel</button>
-          </div>
-        </div>
-      </div>
-      <div id="labor-capital-chart-wrap" style="display:none;margin-bottom:1rem">
-        <div class="chart-box">
-          <div class="chart-lbl">Labor vs capital contribution to net worth</div>
-          <div class="chart-wrap"><canvas id="laborCapitalChart" role="img" aria-label="Labor vs capital contribution to net worth by year"></canvas></div>
-          <div class="legend" id="labor-capital-legend"></div>
-        </div>
-      </div>
-      <div id="income-list"></div>
     </div>
   </div>
 
@@ -1890,7 +1861,7 @@ function renderPlanning() {
 
   renderPlanningChart(entries, totalExpenses);
   renderExpenseList();
-  renderLaborCapital(entries);
+  renderYoYTable(entries);
 }
 
 function renderPlanningChart(entries, totalExpenses) {
@@ -1962,12 +1933,19 @@ function renderPlanningChart(entries, totalExpenses) {
 }
 
 function renderExpenseList() {
-  const el = document.getElementById('expense-list'); if (!el) return;
-  if (!DB_expenses.length) {
-    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">No expenses added yet. Add your monthly expenses above to track coverage.</div>';
-    return;
-  }
+  const el = document.getElementById('expense-list');
+  const totalEl = document.getElementById('expense-total-always');
   const total = totalMonthlyExpenses();
+
+  if (totalEl) {
+    totalEl.textContent = DB_expenses.length
+      ? fmt(total) + '/mo · ' + DB_expenses.length + ' item' + (DB_expenses.length!==1?'s':'')
+      : 'No expenses added yet.';
+  }
+
+  if (!el) return;
+  if (!DB_expenses.length) { el.innerHTML = ''; return; }
+
   el.innerHTML = `<div class="tbl-wrap">
     <table>
       <thead><tr><th>Expense</th><th>Monthly</th><th></th></tr></thead>
@@ -1988,6 +1966,15 @@ function renderExpenseList() {
       </tbody>
     </table>
   </div>`;
+}
+
+function toggleExpenseList() {
+  const wrap = document.getElementById('expense-list-wrap');
+  const btn = document.getElementById('expense-collapse-btn');
+  if (!wrap) return;
+  const open = wrap.style.display !== 'none';
+  wrap.style.display = open ? 'none' : 'block';
+  if (btn) btn.textContent = open ? 'Show ▼' : 'Hide ▲';
 }
 
 function toggleExpenseForm() {
@@ -2031,197 +2018,55 @@ async function deleteExpense(i) {
   renderPlanning();
 }
 
-// ─── Labor vs capital ─────────────────────────────────────────────────────────
-function calcNetCompensation(inc) {
-  const takehome   = parseFloat(inc.takehome||0);
-  const contrib401k = parseFloat(inc.contrib401k||0);
-  const match401k  = contrib401k * (parseFloat(inc.match401kPct||0) / 100);
-  const hsa        = parseFloat(inc.hsa||0);
-  const hsaMatch   = parseFloat(inc.hsaMatch||0);
-  const posttax    = parseFloat(inc.posttax||0);
-  return takehome + contrib401k + match401k + hsa + hsaMatch + posttax;
-}
-
-function renderLaborCapital(entries) {
-  const wrap = document.getElementById('labor-capital-chart-wrap');
-  const listEl = document.getElementById('income-list');
-  if (!DB_income.length) {
-    if (wrap) wrap.style.display = 'none';
-    if (listEl) listEl.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">No income entries yet. Click "+ Log year" to add your first year.</div>';
+// ─── YoY net worth table ──────────────────────────────────────────────────────
+function renderYoYTable(entries) {
+  const el = document.getElementById('yoy-nw-table'); if (!el) return;
+  if (!entries.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3)">No data yet.</div>';
     return;
   }
 
-  const sorted = [...DB_income].sort((a,b) => a.year - b.year);
+  // Find the range of years in the data
+  const firstYear = parseInt(entries[0].date.split('-')[0]);
+  const lastYear  = parseInt(entries[entries.length-1].date.split('-')[0]);
 
-  const years = sorted.map(inc => String(inc.year));
-  const laborData = [], capitalData = [];
+  const rows = [];
+  for (let yr = lastYear; yr >= firstYear; yr--) {
+    // Closest entry at or before Dec 31 of this year
+    const endCandidates = entries.filter(e => e.date <= yr + '-12-31');
+    if (!endCandidates.length) continue;
+    const endEntry = endCandidates[endCandidates.length-1];
 
-  sorted.forEach(inc => {
-    const labor = calcNetCompensation(inc);
-    const yearStr = String(inc.year);
-    const prevYearEntries = entries.filter(e => e.date < yearStr + '-01-01');
-    const yearEntries = entries.filter(e => e.date.startsWith(yearStr + '-'));
-    const startNW = yearEntries.length ? yearEntries[0].nw
-      : prevYearEntries.length ? prevYearEntries[prevYearEntries.length-1].nw : 0;
-    const endNW = yearEntries.length ? yearEntries[yearEntries.length-1].nw : startNW;
-    const nwChange = endNW - startNW;
-    laborData.push(parseFloat(labor.toFixed(0)));
-    capitalData.push(parseFloat((nwChange - labor).toFixed(0)));
-  });
+    // Closest entry at or before Dec 31 of previous year
+    const prevCandidates = entries.filter(e => e.date <= (yr-1) + '-12-31');
+    if (!prevCandidates.length) continue; // can't compute change without a prior year
+    const startEntry = prevCandidates[prevCandidates.length-1];
 
-  if (wrap) wrap.style.display = 'block';
-  if (laborCapitalChart) { laborCapitalChart.destroy(); laborCapitalChart = null; }
+    const change = endEntry.nw - startEntry.nw;
+    const pct = startEntry.nw !== 0 ? (change / Math.abs(startEntry.nw) * 100) : 0;
+    const cls = change >= 0 ? 'up' : 'dn';
 
-  const canvas = document.getElementById('laborCapitalChart');
-  const legendEl = document.getElementById('labor-capital-legend');
-  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
-  const gridC = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.055)';
-  const textC = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)';
-
-  if (legendEl) legendEl.innerHTML =
-    '<span class="legend-item"><span class="legend-dot" style="background:rgba(29,158,117,0.7)"></span>Labor</span>' +
-    '<span class="legend-item"><span class="legend-dot" style="background:rgba(55,138,221,0.7)"></span>Capital (positive)</span>' +
-    '<span class="legend-item"><span class="legend-dot" style="background:rgba(153,60,29,0.7)"></span>Capital (negative)</span>';
-
-  if (canvas) {
-    laborCapitalChart = new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: years,
-        datasets: [
-          {
-            label: 'Labor',
-            data: laborData,
-            backgroundColor: 'rgba(29,158,117,0.7)',
-            borderColor: '#1D9E75',
-            borderWidth: 1, borderRadius: 3, stack: 's'
-          },
-          {
-            label: 'Capital',
-            data: capitalData,
-            backgroundColor: capitalData.map(v => v >= 0 ? 'rgba(55,138,221,0.7)' : 'rgba(153,60,29,0.7)'),
-            borderColor: capitalData.map(v => v >= 0 ? '#378ADD' : '#993C1D'),
-            borderWidth: 1, borderRadius: 3, stack: 's'
-          }
-        ]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: c => ' ' + c.dataset.label + ': ' + fmtD(c.parsed.y),
-              footer: items => {
-                const total = items.reduce((s,i) => s + i.parsed.y, 0);
-                const labor = items.find(i => i.dataset.label === 'Labor')?.parsed.y || 0;
-                const pct = total !== 0 ? Math.round(labor / Math.abs(total) * 100) : 0;
-                return 'NW change: ' + fmtD(total) + '\nLabor: ' + pct + '% · Capital: ' + (100-pct) + '%';
-              }
-            }
-          }
-        },
-        scales: {
-          x: { grid:{color:gridC}, ticks:{color:textC,font:{size:11}} },
-          y: { stacked: true, grid:{color:gridC}, ticks:{color:textC, font:{size:11},
-            callback: v => { if(Math.abs(v)>=1e3) return '$'+(v/1e3).toFixed(0)+'k'; return '$'+v; }
-          }}
-        }
-      }
-    });
+    rows.push({yr, startNW: startEntry.nw, endNW: endEntry.nw, change, pct, cls,
+      startDate: startEntry.date, endDate: endEntry.date});
   }
 
-  // Summary table
-  if (listEl) {
-    listEl.innerHTML = `<div class="tbl-wrap" style="margin-top:12px">
-      <table>
-        <thead><tr><th>Year</th><th>Net comp.</th><th>NW change</th><th>Capital</th><th>Labor %</th><th></th></tr></thead>
-        <tbody>${sorted.map((inc,i) => {
-          const labor = calcNetCompensation(inc);
-          const yearStr = String(inc.year);
-          const prevE = entries.filter(e => e.date < yearStr+'-01-01');
-          const yearE = entries.filter(e => e.date.startsWith(yearStr+'-'));
-          const startNW = yearE.length ? yearE[0].nw : prevE.length ? prevE[prevE.length-1].nw : 0;
-          const endNW = yearE.length ? yearE[yearE.length-1].nw : startNW;
-          const nwChange = endNW - startNW;
-          const capital = nwChange - labor;
-          const laborPct = nwChange !== 0 ? Math.round(labor / Math.abs(nwChange) * 100) : 0;
-          return `<tr>
-            <td style="font-weight:500">${inc.year}</td>
-            <td style="font-family:var(--mono)">${fmt(labor)}</td>
-            <td style="font-family:var(--mono);font-weight:500">${fmtD(nwChange)}</td>
-            <td class="${capital>=0?'up':'dn'}" style="font-family:var(--mono)">${fmtD(capital)}</td>
-            <td style="font-family:var(--mono)">${laborPct}%</td>
-            <td style="text-align:right">
-              <button class="btn-ghost" style="font-size:12px" onclick="editIncome(${i})">Edit</button>
-              <button class="btn-ghost" style="color:var(--red);font-size:12px" onclick="deleteIncome(${i})">✕</button>
-            </td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table>
-    </div>`;
+  if (!rows.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3)">Need at least two years of data to show year-over-year changes.</div>';
+    return;
   }
-}
 
-function toggleIncomeForm() {
-  const el = document.getElementById('income-form'); if (!el) return;
-  const open = el.style.display !== 'none';
-  el.style.display = open ? 'none' : 'block';
-  if (!open) {
-    ['inc-year','inc-takehome','inc-401k','inc-401k-match','inc-hsa','inc-hsa-match','inc-posttax']
-      .forEach(id => { const e = document.getElementById(id); if(e) e.value = ''; });
-    const yearEl = document.getElementById('inc-year');
-    if (yearEl) yearEl.value = new Date().getFullYear() - 1;
-    setTimeout(() => document.getElementById('inc-takehome')?.focus(), 30);
-  }
-}
-
-async function saveIncome() {
-  const year = parseInt(document.getElementById('inc-year').value);
-  const takehome = parseFloat(document.getElementById('inc-takehome').value||0);
-  const contrib401k = parseFloat(document.getElementById('inc-401k').value||0);
-  const match401kPct = parseFloat(document.getElementById('inc-401k-match').value||0);
-  const hsa = parseFloat(document.getElementById('inc-hsa').value||0);
-  const hsaMatch = parseFloat(document.getElementById('inc-hsa-match').value||0);
-  const posttax = parseFloat(document.getElementById('inc-posttax').value||0);
-
-  if (!year || isNaN(year)) { setStatus('Enter a valid year.','err'); return; }
-  if (isNaN(takehome) || takehome <= 0) { setStatus('Enter take-home pay.','err'); return; }
-
-  const entry = {id:uid(), year, takehome, contrib401k, match401kPct, hsa, hsaMatch, posttax};
-  const existing = DB_income.findIndex(e => e.year === year);
-  if (existing >= 0) {
-    if (!confirm('Replace existing entry for ' + year + '?')) return;
-    DB_income[existing] = entry;
-  } else {
-    DB_income.push(entry);
-  }
-  DB_income.sort((a,b) => a.year - b.year);
-  await persist();
-  toggleIncomeForm();
-  renderPlanning();
-}
-
-function editIncome(i) {
-  const inc = DB_income[i]; if (!inc) return;
-  const set = (id,v) => { const e = document.getElementById(id); if(e) e.value = v||''; };
-  set('inc-year', inc.year);
-  set('inc-takehome', inc.takehome);
-  set('inc-401k', inc.contrib401k);
-  set('inc-401k-match', inc.match401kPct);
-  set('inc-hsa', inc.hsa);
-  set('inc-hsa-match', inc.hsaMatch);
-  set('inc-posttax', inc.posttax);
-  document.getElementById('income-form').style.display = 'block';
-  DB_income.splice(i, 1);
-  renderLaborCapital(allEntries());
-}
-
-async function deleteIncome(i) {
-  if (!confirm('Delete this income entry?')) return;
-  DB_income.splice(i, 1);
-  await persist();
-  renderPlanning();
+  el.innerHTML = `<div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Year</th><th>Start</th><th>End</th><th>Change ($)</th><th>Change (%)</th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td style="font-weight:500">${r.yr}</td>
+        <td style="font-family:var(--mono);color:var(--text2)">${fmt(r.startNW)}</td>
+        <td style="font-family:var(--mono);font-weight:500">${fmt(r.endNW)}</td>
+        <td class="${r.cls}" style="font-family:var(--mono)">${fmtD(r.change)}</td>
+        <td class="${r.cls}" style="font-family:var(--mono)">${fmtP(r.pct)}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div>`;
 }
 
 // ─── PWA install prompt ───────────────────────────────────────────────────────
