@@ -408,7 +408,10 @@ tr:hover td{background:var(--bg2)}
           <button class="btn-ghost" id="expense-collapse-btn" onclick="toggleExpenseList()" style="font-size:12px;color:var(--text3)">Show ▼</button>
         </div>
       </div>
-      <div style="font-size:13px;font-family:var(--mono);color:var(--text2);margin-bottom:10px" id="expense-total-always"></div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        Total: <span id="expense-total-inline" style="font-weight:600;color:var(--text);font-family:var(--mono)">—</span>/mo
+        <span id="expense-count-inline" style="font-size:11px;color:var(--text3);margin-left:6px"></span>
+      </div>
       <div id="expense-form" style="display:none;margin-bottom:12px">
         <div class="card" style="padding:.875rem 1.25rem">
           <div class="g3" style="margin-bottom:0">
@@ -429,6 +432,39 @@ tr:hover td{background:var(--bg2)}
       <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
         <div class="sec-label" style="margin-bottom:10px">Year-over-year net worth</div>
         <div id="yoy-nw-table"></div>
+      </div>
+
+      <!-- Investment calculator -->
+      <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div class="sec-label" style="margin:0">Portfolio calculator</div>
+          <button class="btn-ghost" id="calc-collapse-btn" onclick="toggleCalc()" style="font-size:12px;color:var(--text3)">Show ▼</button>
+        </div>
+        <div id="calc-wrap" style="display:none">
+          <div class="card">
+            <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Assumptions</div>
+            <div class="form-row cols2">
+              <div><label>Starting value ($)</label><input id="calc-start" type="number" step="1" placeholder="Defaults to current net worth" /></div>
+              <div><label>Annual contribution ($)</label><input id="calc-contrib" type="number" step="1" placeholder="e.g. 30000" /></div>
+            </div>
+            <div class="form-row cols2">
+              <div><label>Time horizon (years)</label><input id="calc-years" type="number" step="1" min="1" max="50" placeholder="e.g. 1" /></div>
+              <div></div>
+            </div>
+            <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 10px">Expected annual returns</div>
+            <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
+              <div><label>Equities (%)</label><input id="calc-ret-equity" type="number" step="0.1" placeholder="e.g. 7.5" /></div>
+              <div><label>Bonds (%)</label><input id="calc-ret-bonds" type="number" step="0.1" placeholder="e.g. 4.0" /></div>
+              <div><label>Cash & Gold (%)</label><input id="calc-ret-cash" type="number" step="0.1" placeholder="e.g. 2.0" /></div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <button class="btn btn-primary btn-sm" onclick="runCalculator()">Calculate</button>
+              <button class="btn btn-sm" onclick="resetCalculator()">Reset</button>
+            </div>
+          </div>
+          <!-- Results -->
+          <div id="calc-results" style="margin-top:12px"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -520,7 +556,7 @@ const EQUITY_CATS = Object.keys(EQUITY_TARGETS);
 let DB = {institutions:[], history:[], snapshots:[]};
 let pendingAccts = [], mPendingAccts = [], importedRows = [];
 let updQueue = [], updIdx = 0, updDate = '', updVals = {};
-let lineChart = null, pieChart = null, stackChart = null, allocChart = null, allocEquityChart = null, planningChart = null, laborCapitalChart = null, deferredInstall = null;
+let lineChart = null, pieChart = null, stackChart = null, allocChart = null, allocEquityChart = null, planningChart = null, laborCapitalChart = null, calcChart = null, deferredInstall = null;
 let activeRange = 'All';
 let showDeriv = false; // toggle between net worth line and rate-of-change bars
 let snapshotExpanded = true;
@@ -1934,17 +1970,15 @@ function renderPlanningChart(entries, totalExpenses) {
 
 function renderExpenseList() {
   const el = document.getElementById('expense-list');
-  const totalEl = document.getElementById('expense-total-always');
+  const totalEl = document.getElementById('expense-total-inline');
+  const countEl = document.getElementById('expense-count-inline');
   const total = totalMonthlyExpenses();
 
-  if (totalEl) {
-    totalEl.textContent = DB_expenses.length
-      ? fmt(total) + '/mo · ' + DB_expenses.length + ' item' + (DB_expenses.length!==1?'s':'')
-      : 'No expenses added yet.';
-  }
+  if (totalEl) totalEl.textContent = DB_expenses.length ? fmt(total) : '—';
+  if (countEl) countEl.textContent = DB_expenses.length ? DB_expenses.length + ' item' + (DB_expenses.length!==1?'s':'') : '';
 
   if (!el) return;
-  if (!DB_expenses.length) { el.innerHTML = ''; return; }
+  if (!DB_expenses.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">No expenses added yet.</div>'; return; }
 
   el.innerHTML = `<div class="tbl-wrap">
     <table>
@@ -2067,6 +2101,199 @@ function renderYoYTable(entries) {
       </tr>`).join('')}</tbody>
     </table>
   </div>`;
+}
+
+// ─── Portfolio calculator ─────────────────────────────────────────────────────
+function toggleCalc() {
+  const wrap = document.getElementById('calc-wrap');
+  const btn = document.getElementById('calc-collapse-btn');
+  if (!wrap) return;
+  const open = wrap.style.display !== 'none';
+  wrap.style.display = open ? 'none' : 'block';
+  if (btn) btn.textContent = open ? 'Show ▼' : 'Hide ▲';
+  if (!open) initCalcDefaults();
+}
+
+function initCalcDefaults() {
+  // Pre-fill starting value with current net worth if not already set
+  const startEl = document.getElementById('calc-start');
+  if (startEl && !startEl.value) {
+    const entries = allEntries();
+    if (entries.length) startEl.value = Math.round(entries[entries.length-1].nw);
+  }
+  // Pre-fill years with 1
+  const yrsEl = document.getElementById('calc-years');
+  if (yrsEl && !yrsEl.value) yrsEl.value = 1;
+}
+
+function calcBlendedReturn() {
+  // Derive weighted blended return from allocation data and per-class rates
+  const positions = allAllocPositions();
+  const retEquity = parseFloat(document.getElementById('calc-ret-equity').value||0) / 100;
+  const retBonds  = parseFloat(document.getElementById('calc-ret-bonds').value||0) / 100;
+  const retCash   = parseFloat(document.getElementById('calc-ret-cash').value||0) / 100;
+
+  if (!positions.length) return retEquity; // fallback if no allocation data
+
+  const totals = {equity:0, bonds:0, cash_gold:0, total:0};
+  positions.forEach(p => {
+    const val = parseFloat(p.shares) * parseFloat(p.price);
+    if (EQUITY_CATS.includes(p.category)) totals.equity += val;
+    else if (p.category === 'bonds') totals.bonds += val;
+    else if (p.category === 'cash_gold') totals.cash_gold += val;
+    totals.total += val;
+  });
+
+  if (totals.total === 0) return retEquity;
+  return (totals.equity/totals.total)*retEquity +
+         (totals.bonds/totals.total)*retBonds +
+         (totals.cash_gold/totals.total)*retCash;
+}
+
+function runCalculator() {
+  const start   = parseFloat(document.getElementById('calc-start').value);
+  const contrib = parseFloat(document.getElementById('calc-contrib').value||0);
+  const years   = parseInt(document.getElementById('calc-years').value);
+  const retEq   = parseFloat(document.getElementById('calc-ret-equity').value);
+  const retBo   = parseFloat(document.getElementById('calc-ret-bonds').value);
+  const retCa   = parseFloat(document.getElementById('calc-ret-cash').value);
+
+  if (isNaN(start) || start < 0) { setStatus('Enter a valid starting value.','err'); return; }
+  if (isNaN(years) || years < 1) { setStatus('Enter a valid time horizon.','err'); return; }
+  if (isNaN(retEq) || isNaN(retBo) || isNaN(retCa)) { setStatus('Enter all three return rates.','err'); return; }
+
+  // Compute blended return weighted by current allocation
+  const positions = allAllocPositions();
+  let blended = retEq / 100; // fallback
+  if (positions.length) {
+    const tv = {eq:0, bo:0, ca:0, tot:0};
+    positions.forEach(p => {
+      const v = parseFloat(p.shares)*parseFloat(p.price);
+      if (EQUITY_CATS.includes(p.category)) tv.eq += v;
+      else if (p.category==='bonds') tv.bo += v;
+      else if (p.category==='cash_gold') tv.ca += v;
+      tv.tot += v;
+    });
+    if (tv.tot > 0) blended = (tv.eq/tv.tot)*(retEq/100) + (tv.bo/tv.tot)*(retBo/100) + (tv.ca/tv.tot)*(retCa/100);
+  }
+
+  // Build year-by-year projection
+  const rows = [];
+  let value = start;
+  for (let yr = 1; yr <= years; yr++) {
+    const growth = value * blended;
+    value = value * (1 + blended) + contrib * (1 + blended / 2);
+    rows.push({yr, value: Math.round(value), growth: Math.round(growth), contrib: Math.round(contrib)});
+  }
+
+  const finalValue = rows[rows.length-1].value;
+  const monthly4pct = finalValue * 0.04 / 12;
+  const blendedPct = (blended * 100).toFixed(2);
+
+  // Render results
+  const el = document.getElementById('calc-results'); if (!el) return;
+
+  // Summary cards
+  el.innerHTML = `
+    <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:1rem">
+      <div class="metric">
+        <div class="metric-lbl">Projected value</div>
+        <div class="metric-val">${fmt(finalValue)}</div>
+        <div class="metric-sub">after ${years} year${years!==1?'s':''}</div>
+      </div>
+      <div class="metric">
+        <div class="metric-lbl">Blended return</div>
+        <div class="metric-val">${blendedPct}%</div>
+        <div class="metric-sub">${positions.length?'weighted by allocation':'equity rate used'}</div>
+      </div>
+      <div class="metric">
+        <div class="metric-lbl">4% monthly income</div>
+        <div class="metric-val">${fmt(monthly4pct)}</div>
+        <div class="metric-sub">at projected value</div>
+      </div>
+    </div>`;
+
+  // Chart
+  el.innerHTML += `<div class="chart-box" style="margin-bottom:12px">
+    <div class="chart-lbl">Projected growth</div>
+    <div style="position:relative;height:220px"><canvas id="calcChart"></canvas></div>
+    <div class="legend" style="margin-top:8px">
+      <span class="legend-item"><span class="legend-dot" style="background:#1D9E75"></span>Portfolio value</span>
+      <span class="legend-item"><span class="legend-dot" style="background:rgba(55,138,221,0.5)"></span>Annual contribution</span>
+      <span class="legend-item"><span class="legend-dot" style="background:rgba(239,159,39,0.5)"></span>Growth from returns</span>
+    </div>
+  </div>`;
+
+  // Table (collapsible for long horizons)
+  const showTable = years <= 10;
+  el.innerHTML += `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="sec-label" style="margin:0">Year-by-year</div>
+      ${years > 10 ? '<button class="btn-ghost" id="calc-tbl-btn" onclick="toggleCalcTable()" style="font-size:12px;color:var(--text3)">Show ▼</button>' : ''}
+    </div>
+    <div id="calc-table-wrap" style="${years>10?'display:none':''}">
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Year</th><th>Value</th><th>Contributions</th><th>Growth</th></tr></thead>
+          <tbody>${rows.map(r => `<tr>
+            <td style="font-weight:500">${r.yr}</td>
+            <td style="font-family:var(--mono);font-weight:500">${fmt(r.value)}</td>
+            <td style="font-family:var(--mono);color:var(--text2)">${fmt(r.contrib)}</td>
+            <td class="up" style="font-family:var(--mono)">${fmt(r.growth)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  // Draw chart
+  if (calcChart) { calcChart.destroy(); calcChart = null; }
+  const canvas = document.getElementById('calcChart');
+  if (canvas) {
+    const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const gridC = isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.055)';
+    const textC = isDark?'rgba(255,255,255,0.4)':'rgba(0,0,0,0.4)';
+    calcChart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: rows.map(r => 'Yr ' + r.yr),
+        datasets: [
+          { label:'Growth', data:rows.map(r=>r.growth), backgroundColor:'rgba(239,159,39,0.6)', borderColor:'#EF9F27', borderWidth:1, borderRadius:2, stack:'s' },
+          { label:'Contribution', data:rows.map(r=>r.contrib), backgroundColor:'rgba(55,138,221,0.6)', borderColor:'#378ADD', borderWidth:1, borderRadius:2, stack:'s' },
+          { type:'line', label:'Value', data:rows.map(r=>r.value),
+            borderColor:'#1D9E75', backgroundColor:'transparent',
+            pointBackgroundColor:'#1D9E75', pointBorderColor:isDark?'#1E1E1C':'#F3F3EF',
+            pointBorderWidth:2, pointRadius:4, pointHoverRadius:6,
+            tension:0.3, yAxisID:'y' }
+        ]
+      },
+      options:{responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}, tooltip:{mode:'index',intersect:false,
+          callbacks:{label:c=>' '+c.dataset.label+': '+fmt(c.parsed.y)}}},
+        scales:{
+          x:{grid:{color:gridC},ticks:{color:textC,font:{size:11}}},
+          y:{stacked:true, grid:{color:gridC},ticks:{color:textC,font:{size:11},
+            callback:v=>{if(Math.abs(v)>=1e6)return'$'+(v/1e6).toFixed(1)+'M';if(Math.abs(v)>=1e3)return'$'+(v/1e3).toFixed(0)+'k';return'$'+v;}}}
+        }}
+    });
+  }
+}
+
+function toggleCalcTable() {
+  const wrap = document.getElementById('calc-table-wrap');
+  const btn = document.getElementById('calc-tbl-btn');
+  if (!wrap) return;
+  const open = wrap.style.display !== 'none';
+  wrap.style.display = open ? 'none' : 'block';
+  if (btn) btn.textContent = open ? 'Show ▼' : 'Hide ▲';
+}
+
+function resetCalculator() {
+  ['calc-start','calc-contrib','calc-years','calc-ret-equity','calc-ret-bonds','calc-ret-cash']
+    .forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
+  const el = document.getElementById('calc-results');
+  if (el) el.innerHTML = '';
+  if (calcChart) { calcChart.destroy(); calcChart = null; }
+  initCalcDefaults();
 }
 
 // ─── PWA install prompt ───────────────────────────────────────────────────────
