@@ -34,7 +34,7 @@
 }}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px;-webkit-font-smoothing:antialiased}
-.app{max-width:780px;margin:0 auto;padding:1.5rem 1.25rem 5rem}
+.app{max-width:780px;margin:0 auto;padding:0 1.25rem 5rem}
 .screen{display:none}.screen.active{display:block}
 .page-title{font-size:22px;font-weight:600;letter-spacing:-.3px;margin-bottom:3px}
 .page-sub{font-size:13px;color:var(--text2);margin-bottom:1.75rem;line-height:1.5}
@@ -242,16 +242,16 @@ tr:hover td{background:var(--bg2)}
 
   <!-- ── HOME ── -->
   <div id="screen-home" class="screen">
-    <div class="nav-bar" style="position:sticky;top:0;z-index:100;background:var(--bg);margin:0 -1.25rem;padding:0 1.25rem">
+    <div class="nav-bar" style="position:sticky;top:0;z-index:100;background:var(--bg);margin:0 -1.25rem;padding:0 1.25rem;border-bottom:1px solid var(--border);box-shadow:0 1px 0 var(--border)">
       <button class="nav-tab active" id="tab-dashboard" onclick="showTab('dashboard')">Dashboard</button>
       <button class="nav-tab" id="tab-allocation" onclick="showTab('allocation')">Allocation</button>
       <button class="nav-tab" id="tab-planning" onclick="showTab('planning')">Planning</button>
       <button class="nav-tab" id="tab-history" onclick="showTab('history')">History</button>
       <button class="nav-tab" id="tab-accounts" onclick="showTab('accounts')">Accounts</button>
     </div>
-    <div class="status" id="sb" style="position:sticky;top:41px;z-index:99;background:var(--bg);margin:0 -1.25rem;padding:2px 1.25rem;min-height:0"></div>
+    <div class="status" id="sb" style="position:sticky;top:42px;z-index:99;background:var(--bg);margin:0 -1.25rem;padding:0 1.25rem;min-height:0;line-height:1.4"></div>
 
-    <div id="pane-dashboard">
+    <div id="pane-dashboard" style="padding-top:1.25rem">
       <div class="metrics-grid">
         <div class="metric"><div class="metric-lbl">Net worth</div><div class="metric-val" id="m-nw">—</div><div class="metric-sub" id="m-nw-sub"></div></div>
         <div class="metric"><div class="metric-lbl">All-time change</div><div class="metric-val" id="m-atc">—</div><div class="metric-sub" id="m-atc-sub"></div></div>
@@ -324,7 +324,7 @@ tr:hover td{background:var(--bg2)}
       </div>
     </div>
 
-    <div id="pane-allocation" style="display:none">
+    <div id="pane-allocation" style="display:none;padding-top:1.25rem">
       <!-- Summary metrics -->
       <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
         <div class="metric"><div class="metric-lbl">Investable assets</div><div class="metric-val" id="al-total">—</div><div class="metric-sub" id="al-total-sub"></div></div>
@@ -352,7 +352,7 @@ tr:hover td{background:var(--bg2)}
       </div>
     </div>
 
-    <div id="pane-history" style="display:none">
+    <div id="pane-history" style="display:none;padding-top:1.25rem">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div class="sec-label" style="margin:0">All entries</div>
         <button class="btn btn-sm" onclick="exportCSV()">↓ Export CSV</button>
@@ -363,7 +363,7 @@ tr:hover td{background:var(--bg2)}
       </table></div>
     </div>
 
-    <div id="pane-accounts" style="display:none">
+    <div id="pane-accounts" style="display:none;padding-top:1.25rem">
       <div id="manage-list"></div>
       <div style="margin-top:1rem">
         <button class="btn btn-sm" onclick="toggleAddInstForm()">+ Add institution</button>
@@ -397,7 +397,7 @@ tr:hover td{background:var(--bg2)}
     </div>
 
     <!-- ── PLANNING ── -->
-    <div id="pane-planning" style="display:none">
+    <div id="pane-planning" style="display:none;padding-top:1.25rem">
       <!-- Summary metrics -->
       <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
         <div class="metric"><div class="metric-lbl">4% monthly income</div><div class="metric-val" id="pl-income">—</div><div class="metric-sub" id="pl-income-sub"></div></div>
