@@ -189,7 +189,6 @@ tr:hover td{background:var(--bg2)}
 </head>
 <body>
 <div class="app">
-  <div class="status" id="sb"></div>
   <div id="install-banner" class="install-banner">
     <span>📲 Install this app for quick access from your dock</span>
     <button class="btn btn-sm btn-primary" id="install-btn" onclick="installPWA()">Install</button>
@@ -197,6 +196,7 @@ tr:hover td{background:var(--bg2)}
 
   <!-- ── SETUP ── -->
   <div id="screen-setup" class="screen active">
+    <div class="status" id="sb"></div>
     <div class="page-title">Net Worth Tracker</div>
     <div class="page-sub">Add your accounts grouped by institution, then optionally paste in historical net worth data to seed your chart.</div>
 
@@ -242,13 +242,14 @@ tr:hover td{background:var(--bg2)}
 
   <!-- ── HOME ── -->
   <div id="screen-home" class="screen">
-    <div class="nav-bar">
+    <div class="nav-bar" style="position:sticky;top:0;z-index:100;background:var(--bg);margin:0 -1.25rem;padding:0 1.25rem">
       <button class="nav-tab active" id="tab-dashboard" onclick="showTab('dashboard')">Dashboard</button>
       <button class="nav-tab" id="tab-allocation" onclick="showTab('allocation')">Allocation</button>
       <button class="nav-tab" id="tab-planning" onclick="showTab('planning')">Planning</button>
       <button class="nav-tab" id="tab-history" onclick="showTab('history')">History</button>
       <button class="nav-tab" id="tab-accounts" onclick="showTab('accounts')">Accounts</button>
     </div>
+    <div class="status" id="sb" style="position:sticky;top:41px;z-index:99;background:var(--bg);margin:0 -1.25rem;padding:2px 1.25rem;min-height:0"></div>
 
     <div id="pane-dashboard">
       <div class="metrics-grid">
@@ -404,16 +405,46 @@ tr:hover td{background:var(--bg2)}
         <div class="metric"><div class="metric-lbl">Monthly expenses</div><div class="metric-val" id="pl-expenses">—</div><div class="metric-sub" id="pl-expenses-sub"></div></div>
       </div>
 
-      <!-- F.U. Money Meter -->
-      <div class="card" style="margin-bottom:1.5rem">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="font-size:14px;font-weight:600;color:var(--text)">F.U. Money Meter</div>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer;font-weight:400">
-            <input type="checkbox" id="fu-roth-checkbox" onchange="renderFUMeter()" style="width:auto;height:auto" />
-            Include Roth basis
-          </label>
+      <!-- F.U. Money Meter + Roth tracker side by side -->
+      <div style="display:grid;grid-template-columns:1fr 220px;gap:1.25rem;margin-bottom:1.5rem;align-items:start">
+        <!-- F.U. Money Meter -->
+        <div class="card" style="margin-bottom:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-size:14px;font-weight:600;color:var(--text)">F.U. Money Meter</div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer;font-weight:400">
+              <input type="checkbox" id="fu-roth-checkbox" onchange="renderFUMeter()" style="width:auto;height:auto" />
+              Include Roth basis
+            </label>
+          </div>
+          <div id="fu-meter-content"></div>
         </div>
-        <div id="fu-meter-content"></div>
+        <!-- Roth contribution tracker -->
+        <div class="card" style="margin-bottom:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:600;color:var(--text)">Roth contributions</div>
+            <button class="btn btn-xs" onclick="toggleRothForm()">+</button>
+          </div>
+          <div id="roth-form" style="display:none;margin-bottom:8px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+              <div><label>Year</label><input id="roth-year" type="number" placeholder="2026" style="height:30px;font-size:12px" /></div>
+              <div><label>Amount ($)</label><input id="roth-amt" type="number" step="1" placeholder="e.g. 7000" style="height:30px;font-size:12px" /></div>
+            </div>
+            <div style="display:flex;gap:4px">
+              <button class="btn btn-sm btn-primary" onclick="saveRoth()" style="height:28px;font-size:12px">Save</button>
+              <button class="btn btn-sm" onclick="toggleRothForm()" style="height:28px;font-size:12px">✕</button>
+            </div>
+          </div>
+          <!-- Always visible summary -->
+          <div id="roth-summary"></div>
+          <!-- Collapsible detail -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+            <div style="font-size:11px;color:var(--text3)">By year</div>
+            <button class="btn-ghost" id="roth-collapse-btn" onclick="toggleRothDetail()" style="font-size:11px;color:var(--text3);padding:2px 4px">Show ▼</button>
+          </div>
+          <div id="roth-detail" style="display:none;margin-top:6px">
+            <div id="roth-year-rows"></div>
+          </div>
+        </div>
       </div>
 
       <!-- 4% chart -->
@@ -454,25 +485,6 @@ tr:hover td{background:var(--bg2)}
       <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
         <div class="sec-label" style="margin-bottom:10px">Year-over-year net worth</div>
         <div id="yoy-nw-table"></div>
-      </div>
-
-      <!-- Roth contribution tracker -->
-      <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="sec-label" style="margin:0">Roth contributions</div>
-          <button class="btn btn-xs" onclick="toggleRothForm()">+ Add year</button>
-        </div>
-        <div id="roth-form" style="display:none;margin-bottom:10px">
-          <div style="display:grid;grid-template-columns:100px 1fr auto;gap:8px;align-items:flex-end;max-width:360px">
-            <div><label>Year</label><input id="roth-year" type="number" placeholder="2026" style="height:32px;font-size:13px" /></div>
-            <div><label>Contribution ($)</label><input id="roth-amt" type="number" step="1" placeholder="e.g. 7000" style="height:32px;font-size:13px" /></div>
-            <div style="display:flex;gap:4px;padding-bottom:1px">
-              <button class="btn btn-sm btn-primary" onclick="saveRoth()" style="height:32px">✓</button>
-              <button class="btn btn-sm" onclick="toggleRothForm()" style="height:32px">✕</button>
-            </div>
-          </div>
-        </div>
-        <div id="roth-table" style="max-width:360px"></div>
       </div>
 
       <!-- Investment calculator -->
@@ -683,9 +695,14 @@ function fmtAcctDisplay(val) {
 }
 
 function setStatus(msg, type) {
-  const el = document.getElementById('sb'); if (!el) return;
-  el.textContent = msg; el.className = 'status' + (type ? ' '+type : '');
-  if (type === 'ok') setTimeout(() => { if(el.textContent===msg){el.textContent='';el.className='status';} }, 2500);
+  document.querySelectorAll('#sb').forEach(el => {
+    el.textContent = msg; el.className = 'status' + (type ? ' '+type : '');
+  });
+  if (type === 'ok') setTimeout(() => {
+    document.querySelectorAll('#sb').forEach(el => {
+      if(el.textContent===msg){el.textContent='';el.className='status';}
+    });
+  }, 2500);
 }
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -2253,46 +2270,55 @@ function getRothAccountValue() {
 }
 
 function renderRothTable() {
-  const el = document.getElementById('roth-table'); if (!el) return;
+  const summaryEl = document.getElementById('roth-summary');
+  const rowsEl = document.getElementById('roth-year-rows');
   const sorted = [...DB_roth].sort((a,b) => b.year - a.year);
   const total = rothTotal();
   const rothValue = getRothAccountValue();
 
-  if (!sorted.length) {
-    el.innerHTML = '<div style="font-size:12px;color:var(--text3)">No contributions logged yet.</div>';
-    return;
+  // Always-visible summary
+  if (summaryEl) {
+    const gainsHTML = rothValue !== null
+      ? `<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:4px">
+          <span style="color:var(--text3)">Account value</span>
+          <span style="font-family:var(--mono)">${fmt(rothValue)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:3px">
+          <span style="color:var(--text3)">Gains</span>
+          <span class="${(rothValue-total)>=0?'up':'dn'}" style="font-family:var(--mono)">${fmtD(rothValue-total)}</span>
+        </div>` : '';
+    summaryEl.innerHTML = `
+      <div style="display:flex;justify-content:space-between;font-size:13px">
+        <span style="color:var(--text2)">Total basis</span>
+        <span style="font-family:var(--mono);font-weight:600">${total>0?fmt(total):'—'}</span>
+      </div>
+      ${gainsHTML}`;
   }
 
-  const comparisonRow = rothValue !== null
-    ? `<tr style="border-top:1px solid var(--border)">
-        <td style="font-size:11px;color:var(--text3)">Account value</td>
-        <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${fmt(rothValue)}</td>
-        <td></td>
-      </tr>
-      <tr>
-        <td style="font-size:11px;color:var(--text3)">Gains</td>
-        <td style="font-family:var(--mono);font-size:12px" class="${(rothValue-total)>=0?'up':'dn'}">${fmtD(rothValue-total)}</td>
-        <td></td>
-      </tr>` : '';
+  // Collapsible year rows
+  if (rowsEl) {
+    if (!sorted.length) {
+      rowsEl.innerHTML = '<div style="font-size:11px;color:var(--text3)">No entries yet.</div>';
+    } else {
+      rowsEl.innerHTML = sorted.map(r => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:1px solid var(--border)">
+          <span style="font-size:12px;font-family:var(--mono);color:var(--text2)">${r.year}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:12px;font-family:var(--mono)">${fmt(parseFloat(r.amount))}</span>
+            <button class="btn-ghost" style="color:var(--red);font-size:11px;padding:1px 4px" onclick="deleteRoth('${r.id}')">✕</button>
+          </div>
+        </div>`).join('');
+    }
+  }
+}
 
-  el.innerHTML = `<div class="tbl-wrap">
-    <table style="font-size:13px">
-      <thead><tr><th style="font-size:11px">Year</th><th style="font-size:11px">Contribution</th><th></th></tr></thead>
-      <tbody>
-        ${sorted.map((r,i) => `<tr>
-          <td style="font-family:var(--mono)">${r.year}</td>
-          <td style="font-family:var(--mono)">${fmt(parseFloat(r.amount))}</td>
-          <td style="text-align:right"><button class="btn-ghost" style="color:var(--red);font-size:12px;padding:2px 5px" onclick="deleteRoth('${r.id}')">✕</button></td>
-        </tr>`).join('')}
-        <tr style="border-top:2px solid var(--border)">
-          <td style="font-weight:600;font-size:12px">Total basis</td>
-          <td style="font-family:var(--mono);font-weight:600">${fmt(total)}</td>
-          <td></td>
-        </tr>
-        ${comparisonRow}
-      </tbody>
-    </table>
-  </div>`;
+function toggleRothDetail() {
+  const el = document.getElementById('roth-detail');
+  const btn = document.getElementById('roth-collapse-btn');
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (btn) btn.textContent = open ? 'Show ▼' : 'Hide ▲';
 }
 
 function toggleRothForm() {
