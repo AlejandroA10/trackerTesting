@@ -175,7 +175,16 @@ tr:hover td{background:var(--bg2)}
 .alloc-pos-row{display:grid;grid-template-columns:2fr 1fr 1fr 140px auto;gap:6px;align-items:end;margin-bottom:6px}
 .alloc-pos-row input,.alloc-pos-row select{height:32px;font-size:13px}
 .alloc-pos-header{display:grid;grid-template-columns:2fr 1fr 1fr 140px auto;gap:6px;margin-bottom:4px}
-.alloc-pos-header span{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.alloc-pos-header span{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}/* FU Money Meter */
+.fu-number{font-size:28px;font-weight:600;font-family:var(--mono);letter-spacing:-.5px;color:var(--text)}
+.fu-sub{font-size:13px;color:var(--text2);margin-top:2px}
+.fu-bar-wrap{height:8px;background:var(--bg3);border-radius:99px;overflow:hidden;margin:12px 0 4px}
+.fu-bar-fill{height:100%;border-radius:99px;transition:width .5s ease}
+.fu-markers{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);font-family:var(--mono)}
+.fu-breakdown{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.fu-item{text-align:center}
+.fu-item-val{font-size:14px;font-weight:600;font-family:var(--mono);color:var(--text)}
+.fu-item-lbl{font-size:11px;color:var(--text3);margin-top:2px}
 </style>
 </head>
 <body>
@@ -394,6 +403,19 @@ tr:hover td{background:var(--bg2)}
         <div class="metric"><div class="metric-lbl">Coverage</div><div class="metric-val" id="pl-coverage">—</div><div class="metric-sub" id="pl-coverage-sub"></div></div>
         <div class="metric"><div class="metric-lbl">Monthly expenses</div><div class="metric-val" id="pl-expenses">—</div><div class="metric-sub" id="pl-expenses-sub"></div></div>
       </div>
+
+      <!-- F.U. Money Meter -->
+      <div class="card" style="margin-bottom:1.5rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:14px;font-weight:600;color:var(--text)">F.U. Money Meter</div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer;font-weight:400">
+            <input type="checkbox" id="fu-roth-checkbox" onchange="renderFUMeter()" style="width:auto;height:auto" />
+            Include Roth basis
+          </label>
+        </div>
+        <div id="fu-meter-content"></div>
+      </div>
+
       <!-- 4% chart -->
       <div class="chart-box" style="margin-bottom:1.5rem">
         <div class="chart-lbl">4% rule — monthly retirement income over time</div>
@@ -432,6 +454,25 @@ tr:hover td{background:var(--bg2)}
       <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
         <div class="sec-label" style="margin-bottom:10px">Year-over-year net worth</div>
         <div id="yoy-nw-table"></div>
+      </div>
+
+      <!-- Roth contribution tracker -->
+      <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="sec-label" style="margin:0">Roth contributions</div>
+          <button class="btn btn-xs" onclick="toggleRothForm()">+ Add year</button>
+        </div>
+        <div id="roth-form" style="display:none;margin-bottom:10px">
+          <div style="display:grid;grid-template-columns:100px 1fr auto;gap:8px;align-items:flex-end;max-width:360px">
+            <div><label>Year</label><input id="roth-year" type="number" placeholder="2026" style="height:32px;font-size:13px" /></div>
+            <div><label>Contribution ($)</label><input id="roth-amt" type="number" step="1" placeholder="e.g. 7000" style="height:32px;font-size:13px" /></div>
+            <div style="display:flex;gap:4px;padding-bottom:1px">
+              <button class="btn btn-sm btn-primary" onclick="saveRoth()" style="height:32px">✓</button>
+              <button class="btn btn-sm" onclick="toggleRothForm()" style="height:32px">✕</button>
+            </div>
+          </div>
+        </div>
+        <div id="roth-table" style="max-width:360px"></div>
       </div>
 
       <!-- Investment calculator -->
@@ -564,7 +605,8 @@ let assetsVisible = true; // tab-wide asset bubble toggle
 let DB_goals = [];
 let DB_alloc = {};
 let DB_expenses = [];
-let DB_income = []; // [{id, year, takehome, contrib401k, match401kPct, hsa, hsaMatch, posttax}]
+let DB_income = [];
+let DB_roth = []; // [{id, year, amount}]
 let allocUpdQueue = [], allocUpdIdx = 0;
 
 // ─── Persistence (IndexedDB) ──────────────────────────────────────────────────
@@ -600,6 +642,7 @@ async function persist() {
     await idbSet('nwt-alloc', JSON.stringify(DB_alloc));
     await idbSet('nwt-expenses', JSON.stringify(DB_expenses));
     await idbSet('nwt-income', JSON.stringify(DB_income));
+    await idbSet('nwt-roth', JSON.stringify(DB_roth));
     setStatus('Saved', 'ok');
   } catch(e) { setStatus('Save error: ' + e.message, 'err'); }
 }
@@ -615,6 +658,8 @@ async function loadDB() {
     if (e) DB_expenses = JSON.parse(e);
     const inc = await idbGet('nwt-income');
     if (inc) DB_income = JSON.parse(inc);
+    const roth = await idbGet('nwt-roth');
+    if (roth) DB_roth = JSON.parse(roth);
   } catch(e) { setStatus('Load error: ' + e.message, 'err'); }
 }
 
@@ -1802,7 +1847,8 @@ function exportDB() {
     goals: DB_goals,
     alloc: DB_alloc,
     expenses: DB_expenses,
-    income: DB_income
+    income: DB_income,
+    roth: DB_roth
   };
   const clean = JSON.parse(JSON.stringify(payload));
   clean.db.institutions = clean.db.institutions.map(i => {
@@ -1843,6 +1889,7 @@ async function importDB(input) {
       DB_alloc = payload.alloc || {};
       DB_expenses = payload.expenses || [];
       DB_income = payload.income || [];
+      DB_roth = payload.roth || [];
       await persist();
       if (statusEl) { statusEl.textContent = 'Imported successfully.'; statusEl.style.color='var(--accent-dark)'; }
       renderManage();
@@ -1896,8 +1943,10 @@ function renderPlanning() {
     : 'No expenses added yet', '');
 
   renderPlanningChart(entries, totalExpenses);
+  renderFUMeter();
   renderExpenseList();
   renderYoYTable(entries);
+  renderRothTable();
 }
 
 function renderPlanningChart(entries, totalExpenses) {
@@ -2101,6 +2150,182 @@ function renderYoYTable(entries) {
       </tr>`).join('')}</tbody>
     </table>
   </div>`;
+}
+
+// ─── F.U. Money Meter ─────────────────────────────────────────────────────────
+function getLiquidNW() {
+  const snap = DB.snapshots.length ? DB.snapshots[DB.snapshots.length-1] : null;
+  if (!snap) return 0;
+  const accts = allAccts();
+  // Include only taxable accounts
+  return accts
+    .filter(a => a.type === 'taxable')
+    .reduce((s,a) => s + (snap.values[a.id]||0), 0);
+}
+
+function renderFUMeter() {
+  const el = document.getElementById('fu-meter-content'); if (!el) return;
+  const totalExpenses = totalMonthlyExpenses();
+  const includeRoth = document.getElementById('fu-roth-checkbox')?.checked || false;
+
+  let liquid = getLiquidNW();
+  if (includeRoth) liquid += rothTotal();
+
+  if (!totalExpenses) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3)">Add monthly expenses to calculate your runway.</div>';
+    return;
+  }
+  if (!liquid) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3)">No taxable account balances found in your latest snapshot.</div>';
+    return;
+  }
+
+  const months = liquid / totalExpenses;
+  const days   = Math.round(months * 30.44);
+  const years  = months / 12;
+
+  // Bar — capped at 24 months for display, markers at 3, 6, 12, 24
+  const barPct = Math.min(100, (months / 24) * 100);
+  const barColor = months >= 12 ? '#1D9E75' : months >= 6 ? '#EF9F27' : '#993C1D';
+
+  // Primary display — pick most meaningful unit
+  let primary, primarySub;
+  if (days < 60) {
+    primary = days + ' days';
+    primarySub = months.toFixed(1) + ' months of expenses covered';
+  } else if (months < 24) {
+    primary = months.toFixed(1) + ' months';
+    primarySub = days.toLocaleString() + ' days · ' + years.toFixed(1) + ' years';
+  } else {
+    primary = years.toFixed(1) + ' years';
+    primarySub = months.toFixed(0) + ' months · ' + days.toLocaleString() + ' days';
+  }
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:baseline;justify-content:space-between">
+      <div>
+        <div class="fu-number">${primary}</div>
+        <div class="fu-sub">${primarySub}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;color:var(--text3)">Liquid assets</div>
+        <div style="font-size:15px;font-weight:600;font-family:var(--mono)">${fmt(liquid)}</div>
+        ${includeRoth?'<div style="font-size:11px;color:var(--text3)">incl. Roth basis</div>':''}
+      </div>
+    </div>
+    <div class="fu-bar-wrap">
+      <div class="fu-bar-fill" style="width:${barPct}%;background:${barColor}"></div>
+    </div>
+    <div class="fu-markers">
+      <span>0</span><span>3mo</span><span>6mo</span><span>12mo</span><span>24mo+</span>
+    </div>
+    <div class="fu-breakdown">
+      <div class="fu-item">
+        <div class="fu-item-val">${fmt(totalExpenses)}</div>
+        <div class="fu-item-lbl">Monthly burn</div>
+      </div>
+      <div class="fu-item">
+        <div class="fu-item-val">${fmt(totalExpenses * 3)}</div>
+        <div class="fu-item-lbl">3-month target</div>
+      </div>
+      <div class="fu-item">
+        <div class="fu-item-val">${fmt(totalExpenses * 6)}</div>
+        <div class="fu-item-lbl">6-month target</div>
+      </div>
+    </div>`;
+}
+
+// ─── Roth contribution tracker ────────────────────────────────────────────────
+function rothTotal() {
+  return DB_roth.reduce((s,r) => s + parseFloat(r.amount||0), 0);
+}
+
+function getRothAccountValue() {
+  // Find latest snapshot value for any account named "Roth IRA" (case-insensitive)
+  const snap = DB.snapshots.length ? DB.snapshots[DB.snapshots.length-1] : null;
+  if (!snap) return null;
+  const accts = allAccts().filter(a => a.name.toLowerCase().includes('roth ira'));
+  if (!accts.length) return null;
+  return accts.reduce((s,a) => s + (snap.values[a.id]||0), 0);
+}
+
+function renderRothTable() {
+  const el = document.getElementById('roth-table'); if (!el) return;
+  const sorted = [...DB_roth].sort((a,b) => b.year - a.year);
+  const total = rothTotal();
+  const rothValue = getRothAccountValue();
+
+  if (!sorted.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3)">No contributions logged yet.</div>';
+    return;
+  }
+
+  const comparisonRow = rothValue !== null
+    ? `<tr style="border-top:1px solid var(--border)">
+        <td style="font-size:11px;color:var(--text3)">Account value</td>
+        <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${fmt(rothValue)}</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td style="font-size:11px;color:var(--text3)">Gains</td>
+        <td style="font-family:var(--mono);font-size:12px" class="${(rothValue-total)>=0?'up':'dn'}">${fmtD(rothValue-total)}</td>
+        <td></td>
+      </tr>` : '';
+
+  el.innerHTML = `<div class="tbl-wrap">
+    <table style="font-size:13px">
+      <thead><tr><th style="font-size:11px">Year</th><th style="font-size:11px">Contribution</th><th></th></tr></thead>
+      <tbody>
+        ${sorted.map((r,i) => `<tr>
+          <td style="font-family:var(--mono)">${r.year}</td>
+          <td style="font-family:var(--mono)">${fmt(parseFloat(r.amount))}</td>
+          <td style="text-align:right"><button class="btn-ghost" style="color:var(--red);font-size:12px;padding:2px 5px" onclick="deleteRoth('${r.id}')">✕</button></td>
+        </tr>`).join('')}
+        <tr style="border-top:2px solid var(--border)">
+          <td style="font-weight:600;font-size:12px">Total basis</td>
+          <td style="font-family:var(--mono);font-weight:600">${fmt(total)}</td>
+          <td></td>
+        </tr>
+        ${comparisonRow}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function toggleRothForm() {
+  const el = document.getElementById('roth-form'); if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (!open) {
+    document.getElementById('roth-year').value = new Date().getFullYear();
+    document.getElementById('roth-amt').value = '';
+    setTimeout(() => document.getElementById('roth-amt')?.focus(), 30);
+  }
+}
+
+async function saveRoth() {
+  const year = parseInt(document.getElementById('roth-year').value);
+  const amt = parseFloat(document.getElementById('roth-amt').value);
+  if (!year || isNaN(year)) { setStatus('Enter a valid year.','err'); return; }
+  if (isNaN(amt) || amt <= 0) { setStatus('Enter a valid contribution.','err'); return; }
+  const existing = DB_roth.findIndex(r => r.year === year);
+  if (existing >= 0) {
+    if (!confirm('Replace existing entry for ' + year + '?')) return;
+    DB_roth[existing] = {id:DB_roth[existing].id, year, amount:amt};
+  } else {
+    DB_roth.push({id:uid(), year, amount:amt});
+  }
+  DB_roth.sort((a,b) => a.year - b.year);
+  await persist();
+  toggleRothForm();
+  renderRothTable();
+}
+
+async function deleteRoth(id) {
+  if (!confirm('Delete this entry?')) return;
+  DB_roth = DB_roth.filter(r => r.id !== id);
+  await persist();
+  renderRothTable();
 }
 
 // ─── Portfolio calculator ─────────────────────────────────────────────────────
