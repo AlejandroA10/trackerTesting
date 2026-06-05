@@ -2379,6 +2379,7 @@ function calcBlendedReturn() {
 }
 
 function runCalculator() {
+  setStatus('','');
   const start   = parseFloat(document.getElementById('calc-start').value);
   const contrib = parseFloat(document.getElementById('calc-contrib').value||0);
   const years   = parseInt(document.getElementById('calc-years').value);
@@ -2516,6 +2517,7 @@ function toggleCalcTable() {
 }
 
 function resetCalculator() {
+  setStatus('','');
   ['calc-start','calc-contrib','calc-years','calc-ret-equity','calc-ret-bonds','calc-ret-cash']
     .forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
   const el = document.getElementById('calc-results');
