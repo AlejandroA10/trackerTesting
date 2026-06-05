@@ -2157,10 +2157,13 @@ function getLiquidNW() {
   const snap = DB.snapshots.length ? DB.snapshots[DB.snapshots.length-1] : null;
   if (!snap) return 0;
   const accts = allAccts();
-  // Include only taxable accounts
-  return accts
+  const liquid = accts
     .filter(a => a.type === 'taxable')
     .reduce((s,a) => s + (snap.values[a.id]||0), 0);
+  const liabilities = accts
+    .filter(a => a.type === 'debt')
+    .reduce((s,a) => s + (snap.values[a.id]||0), 0);
+  return liquid - liabilities;
 }
 
 function renderFUMeter() {
