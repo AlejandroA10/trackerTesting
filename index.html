@@ -185,6 +185,11 @@ tr:hover td{background:var(--bg2)}
 .fu-item{text-align:center}
 .fu-item-val{font-size:14px;font-weight:600;font-family:var(--mono);color:var(--text)}
 .fu-item-lbl{font-size:11px;color:var(--text3);margin-top:2px}
+.tb-row{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;margin-bottom:6px}
+.tb-row input{height:32px;font-size:13px}
+.tb-hdr{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-bottom:4px}
+.tb-hdr span{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.tax-total-row td{font-weight:600;border-top:2px solid var(--border2);background:var(--bg2)}
 </style>
 </head>
 <body>
@@ -248,6 +253,7 @@ tr:hover td{background:var(--bg2)}
       <button class="nav-tab" id="tab-planning" onclick="showTab('planning')">Planning</button>
       <button class="nav-tab" id="tab-history" onclick="showTab('history')">History</button>
       <button class="nav-tab" id="tab-accounts" onclick="showTab('accounts')">Accounts</button>
+      <button class="nav-tab" id="tab-tax" onclick="showTab('tax')">Tax</button>
     </div>
     <div class="status" id="sb" style="position:sticky;top:42px;z-index:99;background:var(--bg);margin:0 -1.25rem;padding:0 1.25rem;min-height:0;line-height:1.4"></div>
 
@@ -521,6 +527,166 @@ tr:hover td{background:var(--bg2)}
       </div>
     </div>
   </div>
+
+    <!-- ── TAX ESTIMATOR ── -->
+    <div id="pane-tax" style="display:none;padding-top:1.25rem">
+
+      <!-- Results (hidden until calculated) -->
+      <div id="tax-results" style="display:none">
+        <!-- Summary metrics -->
+        <div class="metrics-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:1.25rem">
+          <div class="metric"><div class="metric-lbl">Est. annual salary</div><div class="metric-val" id="tr-salary">—</div></div>
+          <div class="metric"><div class="metric-lbl">Combined marginal rate</div><div class="metric-val" id="tr-combined-marg">—</div><div class="metric-sub">income taxes only</div></div>
+          <div class="metric"><div class="metric-lbl">Federal effective rate</div><div class="metric-val" id="tr-fed-eff">—</div><div class="metric-sub">of fed. taxable income</div></div>
+          <div class="metric"><div class="metric-lbl">Total effective rate</div><div class="metric-val" id="tr-total-eff">—</div><div class="metric-sub">of gross income</div></div>
+        </div>
+
+        <!-- Marginal rate bar -->
+        <div class="card" style="margin-bottom:1rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div class="sec-label" style="margin:0">Marginal rate breakdown</div>
+            <div id="tr-marg-badge" style="font-size:13px;font-weight:600;font-family:var(--mono);color:var(--text)"></div>
+          </div>
+          <div id="tr-marg-bar" style="display:flex;height:16px;border-radius:var(--r-sm);overflow:hidden;gap:1px;margin-bottom:8px"></div>
+          <div id="tr-marg-legend" class="legend"></div>
+        </div>
+
+        <!-- Income & tax waterfall -->
+        <div class="tbl-wrap" style="margin-bottom:1rem">
+          <table>
+            <thead><tr><th>Layer</th><th>Taxable income</th><th>Std. deduction</th><th>Marginal rate</th><th>Effective rate</th><th>Est. annual tax</th></tr></thead>
+            <tbody id="tr-waterfall"></tbody>
+            <tfoot id="tr-waterfall-foot"></tfoot>
+          </table>
+        </div>
+
+        <!-- FICA -->
+        <div class="card" style="margin-bottom:1rem">
+          <div class="sec-label" style="margin-bottom:10px">FICA <span style="font-size:11px;font-weight:400;color:var(--text3)">(informational — cannot be avoided, excluded from rate analysis)</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+            <div><div class="metric-lbl">SS / OASDI base</div><div style="font-size:15px;font-weight:600;font-family:var(--mono)" id="tr-fica-base">—</div><div style="font-size:11px;color:var(--text3)" id="tr-fica-base-note"></div></div>
+            <div><div class="metric-lbl">Social Security (6.2%)</div><div style="font-size:15px;font-weight:600;font-family:var(--mono)" id="tr-ss">—</div></div>
+            <div><div class="metric-lbl">Medicare (1.45%)</div><div style="font-size:15px;font-weight:600;font-family:var(--mono)" id="tr-medicare">—</div><div style="font-size:11px;color:var(--text3)" id="tr-medicare-note"></div></div>
+          </div>
+        </div>
+
+        <!-- 401k callout -->
+        <div class="card" style="margin-bottom:1.5rem;border-left:3px solid var(--accent)">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px">Next 401(k) dollar</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+            <div><div class="metric-lbl">Income tax saved</div><div style="font-size:20px;font-weight:600;font-family:var(--mono);color:var(--accent-dark)" id="tr-401k-saved">—</div><div style="font-size:11px;color:var(--text3)">per $1 contributed</div></div>
+            <div><div class="metric-lbl">Net take-home cost</div><div style="font-size:20px;font-weight:600;font-family:var(--mono)" id="tr-401k-cost">—</div><div style="font-size:11px;color:var(--text3)">per $1 contributed</div></div>
+            <div><div class="metric-lbl">Room remaining</div><div style="font-size:20px;font-weight:600;font-family:var(--mono)" id="tr-401k-room">—</div><div style="font-size:11px;color:var(--text3)" id="tr-401k-room-note"></div></div>
+          </div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.7" id="tr-401k-detail"></div>
+        </div>
+      </div>
+
+      <!-- ── INPUTS ── -->
+      <div class="sec-label">Income</div>
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div><label>Hourly wage ($)</label><input type="number" id="ti-wage" step="0.01" placeholder="0.00" oninput="taxSave();taxCalc()" /></div>
+          <div><label>Hours per week</label><input type="number" id="ti-hours" step="0.5" placeholder="40" oninput="taxSave();taxCalc()" /></div>
+          <div style="display:flex;flex-direction:column;justify-content:flex-end">
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Estimated annual salary</div>
+            <div style="font-family:var(--mono);font-size:15px;font-weight:600;padding:8px 0;color:var(--text)" id="ti-salary-preview">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec-label">Pre-tax deductions</div>
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+          <div><label>HDHP premium <span style="font-weight:400;color:var(--text3)">(annual $)</span></label><input type="number" id="ti-hdhp" step="0.01" placeholder="0.00" oninput="taxSave();taxCalc()" /></div>
+          <div><label>HSA contribution <span style="font-weight:400;color:var(--text3)">(annual $)</span></label><input type="number" id="ti-hsa" step="0.01" placeholder="0.00" oninput="taxSave();taxCalc()" /></div>
+          <div></div>
+        </div>
+        <!-- 401k slider -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <label style="margin:0">401(k) contribution</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" id="ti-401k-pct" min="0" max="100" step="0.5" style="width:70px;text-align:right" placeholder="0" oninput="syncSlider();taxSave();taxCalc()" />
+              <span style="font-size:13px;color:var(--text2)">%</span>
+              <span style="font-size:12px;color:var(--text3);font-family:var(--mono)" id="ti-401k-dollar"></span>
+            </div>
+          </div>
+          <input type="range" id="ti-401k-slider" min="0" max="23" step="0.5" value="0" style="width:100%;accent-color:var(--accent)" oninput="syncPct();taxSave();taxCalc()" />
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:2px"><span>0%</span><span id="ti-401k-cap-label">IRS max</span></div>
+        </div>
+      </div>
+
+      <div class="sec-label">Other income <span style="font-size:11px;font-weight:400;color:var(--text3)">(annual figures)</span></div>
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label>Interest income ($)</label><input type="number" id="ti-interest" step="0.01" placeholder="0.00" oninput="taxSave();taxCalc()" /></div>
+          <div><label>Bond coupon income ($)</label><input type="number" id="ti-bond" step="0.01" placeholder="0.00" oninput="taxSave();taxCalc()" /></div>
+          <div><label>Short-term capital gains ($)</label><input type="number" id="ti-stcg" step="0.01" placeholder="0.00 (losses: negative)" oninput="taxSave();taxCalc()" /></div>
+          <div><label>Long-term capital gains ($)</label><input type="number" id="ti-ltcg" step="0.01" placeholder="0.00 (losses: negative)" oninput="taxSave();taxCalc()" /></div>
+        </div>
+      </div>
+
+      <!-- ── BRACKET SETTINGS ── -->
+      <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="sec-label" style="margin:0">Tax settings &amp; brackets</div>
+          <button class="btn-ghost" id="tax-settings-btn" onclick="toggleTaxSettings()" style="font-size:12px;color:var(--text3)">Show ▼</button>
+        </div>
+        <div id="tax-settings-panel" style="display:none">
+          <!-- Scalars -->
+          <div class="card" style="margin-bottom:10px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:12px">Deductions, caps &amp; FICA</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+              <div><label>Federal std. deduction ($)</label><input type="number" id="ts-fed-ded" step="1" oninput="taxSave();taxCalc()" /></div>
+              <div><label>NYS / NYC std. deduction ($)</label><input type="number" id="ts-state-ded" step="1" oninput="taxSave();taxCalc()" /></div>
+              <div><label>401(k) annual cap ($)</label><input type="number" id="ts-401k-cap" step="1" oninput="taxSave();taxCalc();updateCapLabel()" /></div>
+              <div><label>HSA annual cap ($)</label><input type="number" id="ts-hsa-cap" step="1" oninput="taxSave();taxCalc()" /></div>
+              <div><label>SS wage base ($)</label><input type="number" id="ts-ss-base" step="1" oninput="taxSave();taxCalc()" /></div>
+              <div><label>Additional Medicare threshold ($)</label><input type="number" id="ts-addl-medicare" step="1" oninput="taxSave();taxCalc()" /></div>
+            </div>
+          </div>
+          <!-- Federal brackets -->
+          <div class="card" style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:13px;font-weight:600">Federal income tax brackets</div>
+              <button class="btn btn-xs" onclick="addBracket('fed')">+ Add</button>
+            </div>
+            <div id="tb-fed"></div>
+          </div>
+          <!-- NYS brackets -->
+          <div class="card" style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:13px;font-weight:600">New York State brackets</div>
+              <button class="btn btn-xs" onclick="addBracket('nys')">+ Add</button>
+            </div>
+            <div id="tb-nys"></div>
+          </div>
+          <!-- NYC brackets -->
+          <div class="card" style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:13px;font-weight:600">New York City brackets</div>
+              <button class="btn btn-xs" onclick="addBracket('nyc')">+ Add</button>
+            </div>
+            <div id="tb-nyc"></div>
+          </div>
+          <!-- Federal LTCG brackets -->
+          <div class="card" style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-content:8px">
+              <div>
+                <div style="font-size:13px;font-weight:600">Federal LTCG brackets</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px">"Income over" = ordinary income level at which this LTCG rate applies (stacking)</div>
+              </div>
+              <button class="btn btn-xs" onclick="addBracket('ltcg')">+ Add</button>
+            </div>
+            <div style="margin-top:8px" id="tb-ltcg"></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:1rem">
+            <button class="btn btn-sm btn-danger" onclick="resetTaxDefaults()">Reset to defaults</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
   <!-- ── UPDATE DATE ── -->
   <div id="screen-update" class="screen">
@@ -811,7 +977,7 @@ async function finishSetup() {
 
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 function showTab(tab) {
-  ['dashboard','allocation','planning','history','accounts'].forEach(t => {
+  ['dashboard','allocation','planning','history','accounts','tax'].forEach(t => {
     const p = document.getElementById('pane-'+t); if (p) p.style.display = t===tab?'block':'none';
     const tb = document.getElementById('tab-'+t); if (tb) tb.classList.toggle('active', t===tab);
   });
@@ -819,6 +985,7 @@ function showTab(tab) {
   if (tab==='accounts') renderManage();
   if (tab==='allocation') renderAllocation();
   if (tab==='planning') renderPlanning();
+  if (tab==='tax') initTax();
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -2551,6 +2718,319 @@ function resetCalculator() {
   if (el) el.innerHTML = '';
   if (calcChart) { calcChart.destroy(); calcChart = null; }
   initCalcDefaults();
+}
+
+// ─── TAX ESTIMATOR ───────────────────────────────────────────────────────────
+const TAX_KEY = 'nwt-tax-v3';
+
+const TAX_DEF = {
+  fedDed: 14600, stateDed: 8000,
+  k401Cap: 23000, hsaCap: 4300,
+  ssBase: 176100, addlMedicareThreshold: 200000,
+  fed:  [{over:0,rate:10},{over:11600,rate:12},{over:47150,rate:22},{over:100525,rate:24},{over:191950,rate:32},{over:243725,rate:35},{over:609350,rate:37}],
+  nys:  [{over:0,rate:4},{over:8500,rate:4.5},{over:11700,rate:5.25},{over:13900,rate:5.5},{over:80650,rate:6},{over:215400,rate:6.85},{over:1077550,rate:9.65},{over:5000000,rate:10.3},{over:25000000,rate:10.9}],
+  nyc:  [{over:0,rate:3.078},{over:12000,rate:3.762},{over:25000,rate:3.819},{over:50000,rate:3.876}],
+  ltcg: [{over:0,rate:0},{over:47025,rate:15},{over:518900,rate:20}],
+};
+
+let TX = null;
+
+function taxLoad() {
+  try { const r = localStorage.getItem(TAX_KEY); if (r) TX = JSON.parse(r); } catch(e) {}
+  if (!TX) TX = { s: JSON.parse(JSON.stringify(TAX_DEF)), i: {} };
+  if (!TX.s) TX.s = JSON.parse(JSON.stringify(TAX_DEF));
+  if (!TX.i) TX.i = {};
+  // backfill any missing scalar keys from defaults
+  for (const k of ['fedDed','stateDed','k401Cap','hsaCap','ssBase','addlMedicareThreshold'])
+    if (TX.s[k] == null) TX.s[k] = TAX_DEF[k];
+}
+
+function taxSave() {
+  if (!TX) return;
+  const g = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+  TX.i = {
+    wage: g('ti-wage'), hours: g('ti-hours'),
+    hdhp: g('ti-hdhp'), hsa: g('ti-hsa'), k401pct: g('ti-401k-pct'),
+    interest: g('ti-interest'), bond: g('ti-bond'), stcg: g('ti-stcg'), ltcg: g('ti-ltcg'),
+  };
+  const s = TX.s;
+  s.fedDed   = parseFloat(g('ts-fed-ded'))        || s.fedDed;
+  s.stateDed = parseFloat(g('ts-state-ded'))       || s.stateDed;
+  s.k401Cap  = parseFloat(g('ts-401k-cap'))        || s.k401Cap;
+  s.hsaCap   = parseFloat(g('ts-hsa-cap'))         || s.hsaCap;
+  s.ssBase   = parseFloat(g('ts-ss-base'))         || s.ssBase;
+  s.addlMedicareThreshold = parseFloat(g('ts-addl-medicare')) || s.addlMedicareThreshold;
+  try { localStorage.setItem(TAX_KEY, JSON.stringify(TX)); } catch(e) {}
+}
+
+function initTax() {
+  taxLoad();
+  const set = (id, v) => { const e = document.getElementById(id); if (e && v != null) e.value = v; };
+  const i = TX.i, s = TX.s;
+  set('ti-wage', i.wage); set('ti-hours', i.hours || 40);
+  set('ti-hdhp', i.hdhp); set('ti-hsa', i.hsa);
+  set('ti-401k-pct', i.k401pct || 0);
+  set('ti-interest', i.interest); set('ti-bond', i.bond);
+  set('ti-stcg', i.stcg); set('ti-ltcg', i.ltcg);
+  set('ts-fed-ded', s.fedDed); set('ts-state-ded', s.stateDed);
+  set('ts-401k-cap', s.k401Cap); set('ts-hsa-cap', s.hsaCap);
+  set('ts-ss-base', s.ssBase); set('ts-addl-medicare', s.addlMedicareThreshold);
+  const slider = document.getElementById('ti-401k-slider');
+  if (slider) slider.value = Math.min(parseFloat(i.k401pct || 0), 23);
+  renderBrackets('fed'); renderBrackets('nys'); renderBrackets('nyc'); renderBrackets('ltcg');
+  updateCapLabel();
+  taxCalc();
+}
+
+function toggleTaxSettings() {
+  const p = document.getElementById('tax-settings-panel');
+  const b = document.getElementById('tax-settings-btn');
+  if (!p) return;
+  const open = p.style.display !== 'none';
+  p.style.display = open ? 'none' : 'block';
+  b.textContent = open ? 'Show ▼' : 'Hide ▲';
+}
+
+function updateCapLabel() {
+  const cap = parseFloat(document.getElementById('ts-401k-cap')?.value) || TX?.s?.k401Cap || 23000;
+  const el = document.getElementById('ti-401k-cap-label');
+  if (el) el.textContent = 'IRS max: $' + cap.toLocaleString();
+  const slider = document.getElementById('ti-401k-slider');
+  // slider max is capped at the % that would hit the dollar cap given current salary
+  const wage  = parseFloat(document.getElementById('ti-wage')?.value)  || 0;
+  const hours = parseFloat(document.getElementById('ti-hours')?.value) || 40;
+  const salary = wage * hours * 52;
+  if (slider && salary > 0) {
+    const maxPct = Math.min(100, (cap / salary * 100));
+    slider.max = maxPct.toFixed(1);
+  }
+}
+
+function syncSlider() {
+  const pct = parseFloat(document.getElementById('ti-401k-pct')?.value) || 0;
+  const slider = document.getElementById('ti-401k-slider');
+  if (slider) slider.value = pct;
+  update401kDollar();
+}
+
+function syncPct() {
+  const slider = document.getElementById('ti-401k-slider');
+  const pctEl  = document.getElementById('ti-401k-pct');
+  if (slider && pctEl) pctEl.value = parseFloat(slider.value).toFixed(1);
+  update401kDollar();
+}
+
+function update401kDollar() {
+  const pct    = parseFloat(document.getElementById('ti-401k-pct')?.value) || 0;
+  const wage   = parseFloat(document.getElementById('ti-wage')?.value)  || 0;
+  const hours  = parseFloat(document.getElementById('ti-hours')?.value) || 40;
+  const salary = wage * hours * 52;
+  const annual = Math.min(salary * pct / 100, TX?.s?.k401Cap || 23000);
+  const el = document.getElementById('ti-401k-dollar');
+  if (el) el.textContent = salary > 0 ? '= $' + Math.round(annual).toLocaleString() + '/yr' : '';
+}
+
+// ── Bracket editor ────────────────────────────────────────────────────────────
+function renderBrackets(type) {
+  const brackets = TX.s[type] || [];
+  const el = document.getElementById('tb-' + type);
+  if (!el) return;
+  const lbl = type === 'ltcg' ? 'Ordinary income over ($)' : 'Income over ($)';
+  el.innerHTML = `
+    <div class="tb-hdr"><span>${lbl}</span><span>Rate (%)</span><span></span></div>
+    ${brackets.map((b,i) => `
+      <div class="tb-row">
+        <input type="number" step="1"     value="${b.over}" oninput="updBracket('${type}',${i},'over',this.value)" />
+        <input type="number" step="0.001" value="${b.rate}" oninput="updBracket('${type}',${i},'rate',this.value)" />
+        <button class="btn btn-xs btn-danger" onclick="delBracket('${type}',${i})">✕</button>
+      </div>`).join('')}`;
+}
+
+function updBracket(type, i, field, val) {
+  TX.s[type][i][field] = parseFloat(val) || 0;
+  try { localStorage.setItem(TAX_KEY, JSON.stringify(TX)); } catch(e) {}
+}
+
+function addBracket(type) {
+  TX.s[type].push({over:0, rate:0});
+  try { localStorage.setItem(TAX_KEY, JSON.stringify(TX)); } catch(e) {}
+  renderBrackets(type);
+}
+
+function delBracket(type, i) {
+  TX.s[type].splice(i, 1);
+  try { localStorage.setItem(TAX_KEY, JSON.stringify(TX)); } catch(e) {}
+  renderBrackets(type);
+}
+
+function resetTaxDefaults() {
+  if (!confirm('Reset all brackets and settings to defaults? Your income inputs will be kept.')) return;
+  TX.s = JSON.parse(JSON.stringify(TAX_DEF));
+  try { localStorage.setItem(TAX_KEY, JSON.stringify(TX)); } catch(e) {}
+  initTax();
+}
+
+// ── Core math ─────────────────────────────────────────────────────────────────
+function applyBrackets(income, brackets) {
+  const sorted = [...brackets].sort((a,b) => a.over - b.over);
+  let tax = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    if (income <= sorted[i].over) break;
+    const hi = i+1 < sorted.length ? sorted[i+1].over : Infinity;
+    tax += (Math.min(income, hi) - sorted[i].over) * sorted[i].rate / 100;
+  }
+  return tax;
+}
+
+function margRate(income, brackets) {
+  const sorted = [...brackets].sort((a,b) => a.over - b.over);
+  let rate = 0;
+  for (const b of sorted) { if (income > b.over) rate = b.rate; }
+  return rate;
+}
+
+function taxCalc() {
+  if (!TX) return;
+  const g = id => parseFloat(document.getElementById(id)?.value) || 0;
+  const s = TX.s;
+
+  const wage   = g('ti-wage');
+  const hours  = g('ti-hours') || 40;
+  const salary = wage * hours * 52;
+
+  // Live salary preview
+  const prev = document.getElementById('ti-salary-preview');
+  if (prev) prev.textContent = salary > 0 ? '$' + Math.round(salary).toLocaleString() : '—';
+  update401kDollar();
+  updateCapLabel();
+
+  if (!salary) { document.getElementById('tax-results').style.display = 'none'; return; }
+
+  const hdhp    = g('ti-hdhp');
+  const hsa     = Math.min(g('ti-hsa'), s.hsaCap);
+  const k401pct = g('ti-401k-pct');
+  const k401    = Math.min(salary * k401pct / 100, s.k401Cap);
+
+  const interest = g('ti-interest');
+  const bond     = g('ti-bond');
+  const stcgRaw  = g('ti-stcg');
+  const ltcgRaw  = g('ti-ltcg');
+  const stcg     = Math.max(stcgRaw, -3000); // $3k ordinary income loss cap
+  const ltcg     = Math.max(ltcgRaw, 0);
+
+  // Wage base: same for all three income tax layers (all reduce W-2 Box 1 via Section 125)
+  const wageBase     = Math.max(0, salary - hdhp - hsa - k401);
+  const ordinaryInc  = wageBase + interest + bond + stcg;
+
+  // Each layer subtracts its own standard deduction
+  const fedTaxable   = Math.max(0, ordinaryInc - s.fedDed);
+  const stateTaxable = Math.max(0, ordinaryInc - s.stateDed); // NYS and NYC identical base
+  const ltcgInc      = ltcg; // stacks on top of ordinary for LTCG bracket determination
+
+  // Income taxes
+  const fedTax   = applyBrackets(fedTaxable, s.fed);
+  const nysTax   = applyBrackets(stateTaxable, s.nys);
+  const nycTax   = applyBrackets(stateTaxable, s.nyc);
+
+  // LTCG federal tax (stacks on ordinary)
+  let ltcgTax = 0;
+  if (ltcgInc > 0) {
+    const sorted = [...s.ltcg].sort((a,b) => a.over - b.over);
+    for (let i = 0; i < sorted.length; i++) {
+      const lo = sorted[i].over, hi = i+1 < sorted.length ? sorted[i+1].over : Infinity;
+      const stackedLo = Math.max(0, lo - fedTaxable);
+      const stackedHi = Math.max(0, hi - fedTaxable);
+      const inBracket = Math.min(ltcgInc, stackedHi) - Math.min(ltcgInc, stackedLo);
+      if (inBracket > 0) ltcgTax += inBracket * sorted[i].rate / 100;
+    }
+  }
+
+  const totalIncomeTax = fedTax + nysTax + nycTax + ltcgTax;
+
+  // Marginal rates
+  const fedMarg   = margRate(fedTaxable, s.fed);
+  const nysMarg   = margRate(stateTaxable, s.nys);
+  const nycMarg   = margRate(stateTaxable, s.nyc);
+  const totalMarg = fedMarg + nysMarg + nycMarg;
+
+  // Effective rates
+  const grossInc  = salary + interest + bond + Math.max(stcgRaw, 0) + ltcgRaw;
+  const fedEff    = fedTaxable  > 0 ? fedTax / fedTaxable * 100 : 0;
+  const totalEff  = grossInc    > 0 ? totalIncomeTax / grossInc * 100 : 0;
+
+  // FICA — 401k does NOT reduce FICA base; HDHP and HSA do (Section 125)
+  const ficaBase  = Math.max(0, salary - hdhp - hsa);
+  const ssTax     = Math.min(ficaBase, s.ssBase) * 0.062;
+  const medicareTax = ficaBase * 0.0145 + Math.max(0, ficaBase - s.addlMedicareThreshold) * 0.009;
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  const fD = v => '$' + Math.round(v).toLocaleString();
+  const fR = v => v.toFixed(2) + '%';
+  document.getElementById('tax-results').style.display = 'block';
+
+  setM('tr-salary', fD(salary));
+  setM('tr-combined-marg', fR(totalMarg));
+  setM('tr-fed-eff', fR(fedEff));
+  setM('tr-total-eff', fR(totalEff));
+
+  // Marginal bar
+  const layers = [
+    {label:'Federal', rate:fedMarg, color:'#1D9E75'},
+    {label:'NY State', rate:nysMarg, color:'#378ADD'},
+    {label:'NYC', rate:nycMarg, color:'#EF9F27'},
+  ].filter(l => l.rate > 0);
+  document.getElementById('tr-marg-badge').textContent = fR(totalMarg) + ' combined';
+  document.getElementById('tr-marg-bar').innerHTML = layers.map(l =>
+    `<div style="flex:${l.rate};background:${l.color}" title="${l.label}: ${fR(l.rate)}"></div>`).join('');
+  document.getElementById('tr-marg-legend').innerHTML = layers.map(l =>
+    `<span class="legend-item"><span class="legend-dot" style="background:${l.color}"></span>${l.label}: <strong style="font-family:var(--mono);margin-left:3px">${fR(l.rate)}</strong></span>`).join('');
+
+  // Waterfall
+  const rows = [
+    {label:'Federal', taxable:fedTaxable,   ded:s.fedDed,   marg:fedMarg,  eff:fedEff,   tax:fedTax},
+    {label:'NY State', taxable:stateTaxable, ded:s.stateDed, marg:nysMarg,  eff:stateTaxable>0?nysTax/stateTaxable*100:0, tax:nysTax},
+    {label:'NYC',      taxable:stateTaxable, ded:s.stateDed, marg:nycMarg,  eff:stateTaxable>0?nycTax/stateTaxable*100:0, tax:nycTax},
+  ];
+  document.getElementById('tr-waterfall').innerHTML = rows.map(r => `<tr>
+    <td>${r.label}</td>
+    <td style="font-family:var(--mono)">${fD(r.taxable)}</td>
+    <td style="font-family:var(--mono)">${fD(r.ded)}</td>
+    <td style="font-family:var(--mono)">${fR(r.marg)}</td>
+    <td style="font-family:var(--mono)">${fR(r.eff)}</td>
+    <td style="font-family:var(--mono)">${fD(r.tax)}</td>
+  </tr>`).join('');
+  document.getElementById('tr-waterfall-foot').innerHTML = `<tr class="tax-total-row">
+    <td>Total income taxes</td><td></td><td></td>
+    <td style="font-family:var(--mono)">${fR(totalMarg)}</td>
+    <td style="font-family:var(--mono)">${fR(totalEff)}</td>
+    <td style="font-family:var(--mono)">${fD(totalIncomeTax)}</td>
+  </tr>`;
+
+  // FICA
+  setM('tr-fica-base', fD(ficaBase));
+  document.getElementById('tr-fica-base-note').textContent = ficaBase < salary ? `401(k) doesn't reduce FICA; HDHP & HSA do` : '';
+  setM('tr-ss', fD(ssTax));
+  setM('tr-medicare', fD(medicareTax));
+  const addlMed = Math.max(0, ficaBase - s.addlMedicareThreshold);
+  document.getElementById('tr-medicare-note').textContent = addlMed > 0 ? `incl. 0.9% addl. on ${fD(addlMed)}` : '1.45% flat';
+
+  // 401k callout
+  const margRelieved = totalMarg; // all three income tax layers relieved by 401k
+  const savedPerDollar = margRelieved / 100;
+  const costPerDollar  = 1 - savedPerDollar;
+  const room = Math.max(0, s.k401Cap - k401);
+  setM('tr-401k-saved', (savedPerDollar * 100).toFixed(2) + '¢');
+  setM('tr-401k-cost',  (costPerDollar  * 100).toFixed(2) + '¢');
+  setM('tr-401k-room', fD(room));
+  document.getElementById('tr-401k-room-note').textContent = room > 0
+    ? `${fD(room / (hours * 52))} / hr equivalent`
+    : 'Annual cap reached';
+  document.getElementById('tr-401k-detail').innerHTML =
+    `Each additional $1 into your 401(k) reduces federal (<strong>${fR(fedMarg)}</strong>), NY State (<strong>${fR(nysMarg)}</strong>), and NYC (<strong>${fR(nycMarg)}</strong>) taxable income equally — all three see W-2 Box 1, which reflects the 401(k) reduction.
+    Combined marginal income tax relief: <strong style="font-family:var(--mono)">${fR(margRelieved)}</strong>.
+    Note: 401(k) does <em>not</em> reduce your FICA base — Social Security and Medicare are still owed on that dollar.
+    Net take-home cost of a $1 contribution: <strong style="font-family:var(--mono)">${(costPerDollar*100).toFixed(2)}¢</strong> after income tax savings (before FICA consideration).
+    ${room > 0 ? `You have <strong>${fD(room)}</strong> of 401(k) room remaining this year.` : '<strong>You have reached the annual 401(k) limit.</strong>'}`;
 }
 
 // ─── PWA install prompt ───────────────────────────────────────────────────────
