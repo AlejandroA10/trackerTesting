@@ -2025,6 +2025,7 @@ async function finishUpdate() {
 
 // ─── Full database export / import ───────────────────────────────────────────
 function exportDB() {
+  taxSave(); // flush any unsaved input state
   const payload = {
     version: 1,
     exportedAt: new Date().toISOString(),
@@ -2033,7 +2034,8 @@ function exportDB() {
     alloc: DB_alloc,
     expenses: DB_expenses,
     income: DB_income,
-    roth: DB_roth
+    roth: DB_roth,
+    tax: TX,
   };
   const clean = JSON.parse(JSON.stringify(payload));
   clean.db.institutions = clean.db.institutions.map(i => {
@@ -2075,6 +2077,10 @@ async function importDB(input) {
       DB_expenses = payload.expenses || [];
       DB_income = payload.income || [];
       DB_roth = payload.roth || [];
+      if (payload.tax) {
+        TX = payload.tax;
+        try { localStorage.setItem(TAX_KEY, JSON.stringify(TX)); } catch(e) {}
+      }
       await persist();
       if (statusEl) { statusEl.textContent = 'Imported successfully.'; statusEl.style.color='var(--accent-dark)'; }
       renderManage();
