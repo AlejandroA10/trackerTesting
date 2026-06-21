@@ -554,7 +554,7 @@ tr:hover td{background:var(--bg2)}
         <!-- Income & tax waterfall -->
         <div class="tbl-wrap" style="margin-bottom:1rem">
           <table>
-            <thead><tr><th>Layer</th><th>Taxable income</th><th>Std. deduction</th><th>Marginal rate</th><th>Effective rate</th><th>Est. annual tax</th></tr></thead>
+            <thead><tr><th>Layer</th><th>Taxable income</th><th>Marginal rate</th><th>Effective rate</th><th>Est. annual tax</th></tr></thead>
             <tbody id="tr-waterfall"></tbody>
             <tfoot id="tr-waterfall-foot"></tfoot>
           </table>
@@ -3000,13 +3000,12 @@ function taxCalc() {
   document.getElementById('tr-waterfall').innerHTML = rows.map(r => `<tr>
     <td>${r.label}</td>
     <td style="font-family:var(--mono)">${fD(r.taxable)}</td>
-    <td style="font-family:var(--mono)">${fD(r.ded)}</td>
     <td style="font-family:var(--mono)">${fR(r.marg)}</td>
     <td style="font-family:var(--mono)">${fR(r.eff)}</td>
     <td style="font-family:var(--mono)">${fD(r.tax)}</td>
   </tr>`).join('');
   document.getElementById('tr-waterfall-foot').innerHTML = `<tr class="tax-total-row">
-    <td>Total income taxes</td><td></td><td></td>
+    <td>Total income taxes</td><td></td>
     <td style="font-family:var(--mono)">${fR(totalMarg)}</td>
     <td style="font-family:var(--mono)">${fR(totalEff)}</td>
     <td style="font-family:var(--mono)">${fD(totalIncomeTax)}</td>
