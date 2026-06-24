@@ -128,6 +128,7 @@ tr:hover td{background:var(--bg2)}
 .cf-btn{background:none;border:1px solid var(--border2);border-radius:var(--r-sm);padding:3px 10px;font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;font-family:var(--mono);letter-spacing:.03em;transition:all .12s}
 .cf-btn:hover{background:var(--bg3);color:var(--text2);border-color:var(--border2)}
 .cf-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.cfr-btn-active{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}
 /* YoY module */
 .yoy-row{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border)}
 .yoy-row:last-child{border-bottom:none}
@@ -253,6 +254,7 @@ tr:hover td{background:var(--bg2)}
       <button class="nav-tab" id="tab-planning" onclick="showTab('planning')">Planning</button>
       <button class="nav-tab" id="tab-history" onclick="showTab('history')">History</button>
       <button class="nav-tab" id="tab-accounts" onclick="showTab('accounts')">Accounts</button>
+      <button class="nav-tab" id="tab-cashflow" onclick="showTab('cashflow')">Cash Flow</button>
       <button class="nav-tab" id="tab-tax" onclick="showTab('tax')">Tax</button>
     </div>
     <div class="status" id="sb" style="position:sticky;top:42px;z-index:99;background:var(--bg);margin:0 -1.25rem;padding:0 1.25rem;min-height:0;line-height:1.4"></div>
@@ -527,6 +529,46 @@ tr:hover td{background:var(--bg2)}
       </div>
     </div>
   </div>
+
+    <!-- ── CASH FLOW ── -->
+    <div id="pane-cashflow" style="display:none;padding-top:1.25rem">
+      <div id="cf-empty" style="text-align:center;padding:3rem 1rem;color:var(--text3)">
+        <div style="font-size:2rem;margin-bottom:12px">★</div>
+        <div style="font-weight:600;margin-bottom:6px">No accounts starred</div>
+        <div style="font-size:13px">Star an account from the Accounts tab to track its balance over time.</div>
+      </div>
+      <div id="cf-content" style="display:none">
+        <!-- Chart -->
+        <div class="card" style="margin-bottom:1rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div class="sec-label" style="margin:0" id="cf-chart-title">Balance over time</div>
+          <div style="display:flex;gap:4px">
+              <button class="cf-btn cfr-btn cfr-btn-active" onclick="setCFRange(this,0)">All</button>
+              <button class="cf-btn cfr-btn" onclick="setCFRange(this,3)">3M</button>
+              <button class="cf-btn cfr-btn" onclick="setCFRange(this,6)">6M</button>
+              <button class="cf-btn cfr-btn" onclick="setCFRange(this,12)">1Y</button>
+            </div>
+          </div>
+          <canvas id="cf-chart" style="width:100%;height:220px"></canvas>
+        </div>
+        <!-- Metrics table -->
+        <div class="sec-label">Derived metrics</div>
+        <div class="tbl-wrap" style="margin-bottom:1rem">
+          <table>
+            <thead><tr><th>Account</th><th>Avg balance</th><th>Floor (min)</th><th>Ceiling (max)</th><th>Range</th><th>Avg monthly floor</th><th>Floor trend</th><th>Std dev</th></tr></thead>
+            <tbody id="cf-metrics-body"></tbody>
+          </table>
+        </div>
+        <!-- Monthly floor table -->
+        <div class="sec-label">Monthly floor (lowest reading per month)</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr id="cf-floor-head"></tr></thead>
+            <tbody><tr id="cf-floor-row"></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
     <!-- ── TAX ESTIMATOR ── -->
     <div id="pane-tax" style="display:none;padding-top:1.25rem">
@@ -991,7 +1033,7 @@ async function finishSetup() {
 
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 function showTab(tab) {
-  ['dashboard','allocation','planning','history','accounts','tax'].forEach(t => {
+  ['dashboard','allocation','planning','history','accounts','cashflow','tax'].forEach(t => {
     const p = document.getElementById('pane-'+t); if (p) p.style.display = t===tab?'block':'none';
     const tb = document.getElementById('tab-'+t); if (tb) tb.classList.toggle('active', t===tab);
   });
@@ -999,6 +1041,7 @@ function showTab(tab) {
   if (tab==='accounts') renderManage();
   if (tab==='allocation') renderAllocation();
   if (tab==='planning') renderPlanning();
+  if (tab==='cashflow') renderCashFlow();
   if (tab==='tax') initTax();
 }
 
@@ -1885,7 +1928,7 @@ function renderManage() {
           ? `<button class="btn-ghost" style="font-size:11px;color:var(--accent-dark)" onclick="quickAddAsset('${inst.id}','${a.id}')">+ asset</button>`
           : '';
         return `<div class="acct-row" style="flex-wrap:wrap">
-          <div class="acct-info" style="flex:1">${addBtn}<span style="font-size:14px">${a.name}</span><span class="${tagCls(a.type)}">${TAGS[a.type]}</span></div>
+          <div class="acct-info" style="flex:1">${addBtn}<span style="font-size:14px">${a.name}</span><span class="${tagCls(a.type)}">${TAGS[a.type]}</span>${cfStarMode ? `<button class="btn-ghost" style="font-size:16px;padding:0 4px;line-height:1;color:var(--text)" onclick="toggleAcctStar('${a.id}')" title="Toggle cash flow tracking">${(DB_cfStars||[]).includes(a.id)?'★':'☆'}</button>` : ((DB_cfStars||[]).includes(a.id) ? '<span style="font-size:12px;margin-left:4px;color:var(--text)" title="Tracked in Cash Flow">★</span>' : '')}</div>
           <button class="btn-ghost" onclick="removeAcctManage('${inst.id}','${a.id}')">✕</button>
           ${bubbles ? `<div style="width:100%">${bubbles}</div>` : ''}
         </div>`;
@@ -1904,16 +1947,20 @@ function renderManage() {
       <div id="quick-asset-${inst.id}-${inst.accounts.map(a=>a.id).join('-')}" style="display:none"></div>
     </div>`).join('');
 
-  // Asset visibility toggle button
+  // Button bar: asset toggle + cash flow star button
   const existingToggle = document.getElementById('asset-vis-toggle');
   if (!existingToggle) {
     const manageSection = document.getElementById('manage-list').parentElement;
     const toggleBtn = document.createElement('div');
-    toggleBtn.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:10px';
-    toggleBtn.innerHTML = `<button class="btn btn-xs" id="asset-vis-toggle" onclick="toggleAssetVis()">${assetsVisible?'Hide assets ▲':'Show assets ▼'}</button>`;
+    toggleBtn.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px';
+    toggleBtn.innerHTML = `
+      <button class="btn btn-xs" id="cf-star-btn" onclick="toggleCFStarMode()">${cfStarMode ? 'Done ✓' : '★ Track cash flow'}</button>
+      <button class="btn btn-xs" id="asset-vis-toggle" onclick="toggleAssetVis()">${assetsVisible?'Hide assets ▲':'Show assets ▼'}</button>`;
     manageSection.insertBefore(toggleBtn, document.getElementById('manage-list'));
   } else {
     existingToggle.textContent = assetsVisible ? 'Hide assets ▲' : 'Show assets ▼';
+    const starBtn = document.getElementById('cf-star-btn');
+    if (starBtn) starBtn.textContent = cfStarMode ? 'Done ✓' : '★ Track cash flow';
   }
 }
 
@@ -2050,6 +2097,7 @@ function exportDB() {
     income: DB_income,
     roth: DB_roth,
     tax: TX,
+    cfStars: DB_cfStars,
   };
   const clean = JSON.parse(JSON.stringify(payload));
   clean.db.institutions = clean.db.institutions.map(i => {
@@ -2094,6 +2142,10 @@ async function importDB(input) {
       if (payload.tax) {
         TX = payload.tax;
         try { localStorage.setItem(TAX_KEY, JSON.stringify(TX)); } catch(e) {}
+      }
+      if (payload.cfStars) {
+        DB_cfStars = payload.cfStars;
+        cfPersist();
       }
       await persist();
       if (statusEl) { statusEl.textContent = 'Imported successfully.'; statusEl.style.color='var(--accent-dark)'; }
@@ -2740,6 +2792,260 @@ function resetCalculator() {
   initCalcDefaults();
 }
 
+// ─── CASH FLOW ANALYSIS ──────────────────────────────────────────────────────
+
+let DB_cfStars = []; // array of acct IDs starred for cash flow tracking
+let cfStarMode = false;
+let cfChart = null;
+let cfRangeMonths = 0;
+
+function setCFRange(btn, months) {
+  cfRangeMonths = months;
+  document.querySelectorAll('.cfr-btn').forEach(b => b.classList.toggle('cfr-btn-active', b === btn));
+  renderCashFlow();
+}
+
+function cfPersist() {
+  try { localStorage.setItem('nwt-cfstars', JSON.stringify(DB_cfStars)); } catch(e) {}
+}
+
+function cfLoad() {
+  try { const r = localStorage.getItem('nwt-cfstars'); if (r) DB_cfStars = JSON.parse(r); } catch(e) {}
+}
+
+function toggleCFStarMode() {
+  cfStarMode = !cfStarMode;
+  renderManage();
+}
+
+function toggleAcctStar(acctId) {
+  if (!DB_cfStars) DB_cfStars = [];
+  const idx = DB_cfStars.indexOf(acctId);
+  if (idx >= 0) DB_cfStars.splice(idx, 1);
+  else DB_cfStars.push(acctId);
+  cfPersist();
+  renderManage();
+}
+
+function renderCashFlow() {
+  cfLoad();
+  // Sync active button to current cfRangeMonths state
+  document.querySelectorAll('.cfr-btn').forEach(b => {
+    const onclick = b.getAttribute('onclick') || '';
+    const match = onclick.match(/setCFRange\(this,(\d+)\)/);
+    const months = match ? parseInt(match[1]) : 0;
+    b.classList.toggle('cfr-btn-active', months === cfRangeMonths);
+  });
+  const stars = DB_cfStars || [];
+  const empty = document.getElementById('cf-empty');
+  const content = document.getElementById('cf-content');
+  if (!stars.length) { empty.style.display = 'block'; content.style.display = 'none'; return; }
+  empty.style.display = 'none'; content.style.display = 'block';
+
+  // Resolve starred account names
+  const starredAccts = [];
+  DB.institutions.forEach(inst => inst.accounts.forEach(a => {
+    if (stars.includes(a.id)) starredAccts.push({ id: a.id, name: a.name, inst: inst.name });
+  }));
+  if (!starredAccts.length) { empty.style.display = 'block'; content.style.display = 'none'; return; }
+
+  // Build time series per account from snapshots
+  let snaps = [...DB.snapshots].sort((a,b) => a.date.localeCompare(b.date));
+  if (cfRangeMonths > 0) {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - cfRangeMonths);
+    const cutoffStr = cutoff.toISOString().slice(0,10);
+    snaps = snaps.filter(s => s.date >= cutoffStr);
+  }
+
+  const COLORS = ['#1D9E75','#378ADD','#EF9F27','#E05C5C','#9B59B6'];
+  const datasets = starredAccts.map((acct, i) => ({
+    acct,
+    points: snaps
+      .filter(s => s.values && s.values[acct.id] != null)
+      .map(s => ({ date: s.date, value: s.values[acct.id] })),
+    color: COLORS[i % COLORS.length],
+  }));
+
+  // Update chart title
+  const title = document.getElementById('cf-chart-title');
+  if (title) title.textContent = starredAccts.map(a => a.name).join(' & ') + ' — Balance over time';
+
+  // Draw chart
+  const canvas = document.getElementById('cf-chart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth - 32;
+  const H = 220;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  // Gather all dates and values for scale
+  const allDates = [...new Set(datasets.flatMap(d => d.points.map(p => p.date)))].sort();
+  if (!allDates.length) return;
+  const allVals = datasets.flatMap(d => d.points.map(p => p.value));
+  const minV = Math.min(...allVals);
+  const maxV = Math.max(...allVals);
+  const pad = { top:16, right:16, bottom:40, left:72 };
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  const vRange = maxV - minV || 1;
+  const xOf = date => pad.left + (allDates.indexOf(date) / Math.max(allDates.length - 1, 1)) * cW;
+  const yOf = val  => pad.top  + (1 - (val - minV) / vRange) * cH;
+
+  // Grid lines
+  const fmtK = v => Math.abs(v) >= 1000 ? (v/1000).toFixed(1) + 'k' : v.toFixed(0);
+  const gridCount = 4;
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e5e7eb';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= gridCount; i++) {
+    const v = minV + (vRange * i / gridCount);
+    const y = yOf(v);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text3').trim() || '#9ca3af';
+    ctx.font = '11px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText('$' + fmtK(v), pad.left - 6, y + 4);
+  }
+
+  // X axis labels (show up to 8 evenly spaced)
+  const labelStep = Math.max(1, Math.ceil(allDates.length / 8));
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text3').trim() || '#9ca3af';
+  ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  allDates.forEach((d, i) => {
+    if (i % labelStep !== 0 && i !== allDates.length - 1) return;
+    const x = xOf(d);
+    ctx.fillText(d.slice(5), x, H - pad.bottom + 14); // MM-DD
+  });
+
+  // Lines per dataset
+  datasets.forEach(ds => {
+    if (!ds.points.length) return;
+    ctx.strokeStyle = ds.color; ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ds.points.forEach((p, i) => {
+      const x = xOf(p.date), y = yOf(p.value);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    // Dots
+    ds.points.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(xOf(p.date), yOf(p.value), 3, 0, Math.PI * 2);
+      ctx.fillStyle = ds.color; ctx.fill();
+    });
+    // Dotted linear regression trend line
+    if (ds.points.length >= 3) {
+      const n = ds.points.length;
+      const xs = ds.points.map((_, i) => i);
+      const ys = ds.points.map(p => p.value);
+      const mx = xs.reduce((a,b) => a+b, 0) / n;
+      const my = ys.reduce((a,b) => a+b, 0) / n;
+      const num = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0);
+      const den = xs.reduce((s, x) => s + (x - mx) ** 2, 0);
+      const slope = den ? num / den : 0;
+      const intercept = my - slope * mx;
+      const y0 = intercept;
+      const y1 = intercept + slope * (n - 1);
+      ctx.save();
+      ctx.setLineDash([4, 5]);
+      ctx.strokeStyle = ds.color;
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(xOf(ds.points[0].date), yOf(y0));
+      ctx.lineTo(xOf(ds.points[n-1].date), yOf(y1));
+      ctx.stroke();
+      ctx.restore();
+    }
+  });
+
+  // Legend
+  if (datasets.length > 1) {
+    let lx = pad.left;
+    datasets.forEach(ds => {
+      ctx.fillStyle = ds.color;
+      ctx.fillRect(lx, H - 10, 12, 3);
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#111';
+      ctx.font = '11px system-ui'; ctx.textAlign = 'left';
+      ctx.fillText(ds.acct.name, lx + 16, H - 6);
+      lx += ctx.measureText(ds.acct.name).width + 36;
+    });
+  }
+
+  // ── Metrics table ─────────────────────────────────────────────────────────
+  const fmtD = v => '$' + Math.round(v).toLocaleString();
+  const tbody = document.getElementById('cf-metrics-body');
+  if (tbody) {
+    tbody.innerHTML = datasets.map(ds => {
+      if (!ds.points.length) return `<tr><td>${ds.acct.name}</td><td colspan="7" style="color:var(--text3)">No data</td></tr>`;
+      const vals = ds.points.map(p => p.value);
+      const avg  = vals.reduce((a,b) => a+b, 0) / vals.length;
+      const min  = Math.min(...vals);
+      const max  = Math.max(...vals);
+      const range = max - min;
+      const std  = Math.sqrt(vals.map(v => (v-avg)**2).reduce((a,b)=>a+b,0) / vals.length);
+
+      // Monthly floors
+      const byMonth = {};
+      ds.points.forEach(p => {
+        const m = p.date.slice(0,7);
+        if (byMonth[m] == null || p.value < byMonth[m]) byMonth[m] = p.value;
+      });
+      const monthFloors = Object.values(byMonth);
+      const avgFloor = monthFloors.length ? monthFloors.reduce((a,b)=>a+b,0) / monthFloors.length : avg;
+
+      // Trend: compare first half avg floor vs second half avg floor
+      let trend = '—';
+      if (monthFloors.length >= 2) {
+        const mid = Math.floor(monthFloors.length / 2);
+        const firstHalf = monthFloors.slice(0, mid).reduce((a,b)=>a+b,0) / mid;
+        const secondHalf = monthFloors.slice(mid).reduce((a,b)=>a+b,0) / (monthFloors.length - mid);
+        const diff = secondHalf - firstHalf;
+        trend = diff > 50 ? `↑ ${fmtD(diff)}` : diff < -50 ? `↓ ${fmtD(Math.abs(diff))}` : '→ Flat';
+      }
+
+      return `<tr>
+        <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ds.color};margin-right:6px"></span>${ds.acct.name}</td>
+        <td style="font-family:var(--mono)">${fmtD(avg)}</td>
+        <td style="font-family:var(--mono)">${fmtD(min)}</td>
+        <td style="font-family:var(--mono)">${fmtD(max)}</td>
+        <td style="font-family:var(--mono)">${fmtD(range)}</td>
+        <td style="font-family:var(--mono)">${fmtD(avgFloor)}</td>
+        <td style="font-family:var(--mono);color:${trend.startsWith('↑')?'var(--accent-dark)':trend.startsWith('↓')?'var(--red)':'var(--text2)'}">${trend}</td>
+        <td style="font-family:var(--mono)">${fmtD(std)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Monthly floor table ───────────────────────────────────────────────────
+  const allMonths = [...new Set(datasets.flatMap(ds =>
+    ds.points.map(p => p.date.slice(0,7))
+  ))].sort();
+
+  const headRow = document.getElementById('cf-floor-head');
+  const floorRow = document.getElementById('cf-floor-row');
+  if (headRow && floorRow && allMonths.length) {
+    // If multiple accounts, show each on its own row
+    headRow.innerHTML = `<th>Account</th>` + allMonths.map(m => `<th>${m}</th>`).join('');
+    floorRow.parentElement.innerHTML = datasets.map(ds => {
+      const byMonth = {};
+      ds.points.forEach(p => {
+        const m = p.date.slice(0,7);
+        if (byMonth[m] == null || p.value < byMonth[m]) byMonth[m] = p.value;
+      });
+      return `<tr>
+        <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ds.color};margin-right:6px"></span>${ds.acct.name}</td>
+        ${allMonths.map(m => `<td style="font-family:var(--mono)">${byMonth[m] != null ? fmtD(byMonth[m]) : '—'}</td>`).join('')}
+      </tr>`;
+    }).join('');
+  }
+}
+
 // ─── TAX ESTIMATOR ───────────────────────────────────────────────────────────
 const TAX_KEY = 'nwt-tax-v3';
 
@@ -3076,6 +3382,7 @@ function installPWA() {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 (async function init() {
   await loadDB();
+  cfLoad();
   if (DB.institutions.length > 0) { showScreen('screen-home'); renderHome(); }
   else { showScreen('screen-setup'); renderSetupList(); }
   if ('serviceWorker' in navigator) {
