@@ -560,14 +560,6 @@ tr:hover td{background:var(--bg2)}
             <tbody id="cf-metrics-body"></tbody>
           </table>
         </div>
-        <!-- Monthly floor table -->
-        <div class="sec-label">Monthly floor (lowest reading per month)</div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr id="cf-floor-head"></tr></thead>
-            <tbody><tr id="cf-floor-row"></tr></tbody>
-          </table>
-        </div>
       </div>
     </div>
 
@@ -3051,27 +3043,6 @@ function renderCashFlow() {
     }).join('');
   }
 
-  // ── Monthly floor table ───────────────────────────────────────────────────
-  const allMonths = [...new Set(datasets.flatMap(ds =>
-    ds.points.map(p => p.date.slice(0,7))
-  ))].sort();
-
-  const headRow = document.getElementById('cf-floor-head');
-  const floorRow = document.getElementById('cf-floor-row');
-  if (headRow && floorRow && allMonths.length) {
-    headRow.innerHTML = `<th>Account</th>` + allMonths.map(m => `<th>${m}</th>`).join('');
-    floorRow.parentElement.innerHTML = datasets.map(ds => {
-      const byMonth = {};
-      ds.points.forEach(p => {
-        const m = p.date.slice(0,7);
-        if (byMonth[m] == null || p.value < byMonth[m]) byMonth[m] = p.value;
-      });
-      return `<tr>
-        <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ds.color};margin-right:6px"></span>${ds.acct.name}</td>
-        ${allMonths.map(m => `<td style="font-family:var(--mono)">${byMonth[m] != null ? fmtD(byMonth[m]) : '—'}</td>`).join('')}
-      </tr>`;
-    }).join('');
-  }
 }
 
 // ─── TAX ESTIMATOR ───────────────────────────────────────────────────────────
