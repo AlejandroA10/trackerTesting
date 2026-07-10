@@ -330,6 +330,19 @@ tr:hover td{background:var(--bg2)}
           <div class="chart-wrap"><canvas id="stackChart" role="img" aria-label="Stacked area chart showing taxable, tax-deferred, and Roth balances over time"></canvas></div>
         </div>
       </div>
+
+      <!-- Contribution tracking card -->
+      <div id="contrib-section" style="display:none;margin-top:1.5rem">
+        <div class="card">
+          <div class="chart-lbl" style="margin-bottom:12px">YTD contributions</div>
+          <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:1rem">
+            <div class="metric"><div class="metric-lbl">Total contributed</div><div class="metric-val" id="ct-total">—</div><div class="metric-sub" id="ct-year"></div></div>
+            <div class="metric"><div class="metric-lbl">Net worth growth</div><div class="metric-val" id="ct-nw-growth">—</div><div class="metric-sub">Jan 1 → today</div></div>
+            <div class="metric"><div class="metric-lbl">Organic growth</div><div class="metric-val" id="ct-organic">—</div><div class="metric-sub">growth minus contributions</div></div>
+          </div>
+          <div id="ct-breakdown"></div>
+        </div>
+      </div>
     </div>
 
     <div id="pane-allocation" style="display:none;padding-top:1.25rem">
@@ -824,7 +837,7 @@ const EQUITY_CATS = Object.keys(EQUITY_TARGETS);
 // ─── State ────────────────────────────────────────────────────────────────────
 let DB = {institutions:[], history:[], snapshots:[]};
 let pendingAccts = [], mPendingAccts = [], importedRows = [];
-let updQueue = [], updIdx = 0, updDate = '', updVals = {};
+let updQueue = [], updIdx = 0, updDate = '', updVals = {}, updContribs = {};
 let lineChart = null, pieChart = null, stackChart = null, allocChart = null, allocEquityChart = null, planningChart = null, laborCapitalChart = null, calcChart = null, deferredInstall = null;
 let activeRange = 'All';
 let showDeriv = false; // toggle between net worth line and rate-of-change bars
@@ -1039,7 +1052,7 @@ function showTab(tab) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function renderHome() { renderMetrics(); renderCharts(); renderLatestBreakdown(); renderYoY(); renderGoals(); renderStackChart(); }
+function renderHome() { renderMetrics(); renderCharts(); renderLatestBreakdown(); renderYoY(); renderGoals(); renderStackChart(); renderContribs(); }
 const setM = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
 const setC = (id,c) => { const e=document.getElementById(id); if(e) e.className='metric-val '+c; };
 
@@ -1921,7 +1934,7 @@ function renderManage() {
           ? `<button class="btn-ghost" style="font-size:11px;color:var(--accent-dark)" onclick="quickAddAsset('${inst.id}','${a.id}')">+ asset</button>`
           : '';
         return `<div class="acct-row" style="flex-wrap:wrap">
-          <div class="acct-info" style="flex:1">${addBtn}<span style="font-size:14px">${a.name}</span><span class="${tagCls(a.type)}">${TAGS[a.type]}</span>${cfStarMode ? `<button class="btn-ghost" style="font-size:16px;padding:0 4px;line-height:1;color:var(--text)" onclick="toggleAcctStar('${a.id}')" title="Toggle cash flow tracking">${(DB_cfStars||[]).includes(a.id)?'★':'☆'}</button>` : ((DB_cfStars||[]).includes(a.id) ? '<span style="font-size:12px;margin-left:4px;color:var(--text)" title="Tracked in Cash Flow">★</span>' : '')}</div>
+          <div class="acct-info" style="flex:1">${addBtn}<span style="font-size:14px">${a.name}</span><span class="${tagCls(a.type)}">${TAGS[a.type]}</span>${cfStarMode ? `<button class="btn-ghost" style="font-size:16px;padding:0 4px;line-height:1;color:var(--text)" onclick="toggleAcctStar('${a.id}')" title="Toggle cash flow tracking">${(DB_cfStars||[]).includes(a.id)?'★':'☆'}</button>` : ((DB_cfStars||[]).includes(a.id) ? '<span style="font-size:12px;margin-left:4px;color:var(--text)" title="Tracked in Cash Flow">★</span>' : '')}${ctMarkMode ? `<button class="btn-ghost" style="font-size:14px;font-weight:700;padding:0 4px;line-height:1;color:${(DB_ctAccts||[]).includes(a.id)?'var(--text)':'var(--text3)'}" onclick="toggleAcctCt('${a.id}')" title="Toggle contribution tracking">$</button>` : ((DB_ctAccts||[]).includes(a.id) ? '<span style="font-size:12px;font-weight:700;margin-left:4px;color:var(--text)" title="Contribution tracked">$</span>' : '')}</div>
           <button class="btn-ghost" onclick="removeAcctManage('${inst.id}','${a.id}')">✕</button>
           ${bubbles ? `<div style="width:100%">${bubbles}</div>` : ''}
         </div>`;
@@ -1948,12 +1961,15 @@ function renderManage() {
     toggleBtn.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px';
     toggleBtn.innerHTML = `
       <button class="btn btn-xs" id="cf-star-btn" onclick="toggleCFStarMode()">${cfStarMode ? 'Done ✓' : '★ Track cash flow'}</button>
+      <button class="btn btn-xs" id="ct-mark-btn" onclick="toggleCtMarkMode()">${ctMarkMode ? 'Done ✓' : '$ Track contributions'}</button>
       <button class="btn btn-xs" id="asset-vis-toggle" onclick="toggleAssetVis()">${assetsVisible?'Hide assets ▲':'Show assets ▼'}</button>`;
     manageSection.insertBefore(toggleBtn, document.getElementById('manage-list'));
   } else {
     existingToggle.textContent = assetsVisible ? 'Hide assets ▲' : 'Show assets ▼';
     const starBtn = document.getElementById('cf-star-btn');
     if (starBtn) starBtn.textContent = cfStarMode ? 'Done ✓' : '★ Track cash flow';
+    const ctBtn = document.getElementById('ct-mark-btn');
+    if (ctBtn) ctBtn.textContent = ctMarkMode ? 'Done ✓' : '$ Track contributions';
   }
 }
 
@@ -2013,7 +2029,7 @@ function startUpdate() { document.getElementById('upd-date').value=new Date().to
 function beginUpdates() {
   const d=document.getElementById('upd-date').value;
   if (!d) { setStatus('Select a date.','err'); return; }
-  updDate=d; updQueue=allAccts(); updIdx=0; updVals={};
+  updDate=d; updQueue=allAccts(); updIdx=0; updVals={}; updContribs={};
   if (!updQueue.length) { setStatus('No accounts configured.','err'); return; }
   showScreen('screen-update-accts'); renderUpdStep();
 }
@@ -2028,6 +2044,7 @@ function renderUpdStep() {
   const prev=DB.snapshots.length?DB.snapshots[DB.snapshots.length-1]:null;
   const prevVal=prev&&prev.values[a.id]!==undefined?prev.values[a.id]:null;
   const el=document.getElementById('upd-form'); if (!el) return;
+  const isCtAcct = (DB_ctAccts||[]).includes(a.id);
   el.innerHTML=`
     <div class="upd-step">
       <div class="upd-inst"><span class="upd-inst-icon">${icon}</span>${a.instName}</div>
@@ -2036,6 +2053,9 @@ function renderUpdStep() {
       <div class="upd-prev">${prevVal!==null?'Previous: <strong>'+fmt(prevVal)+'</strong>':'First entry for this account'}</div>
       <label>Current balance</label>
       <input type="number" id="upd-val" step="1" placeholder="${prevVal!==null?Math.round(prevVal):''}" style="max-width:220px;margin-top:5px" />
+      ${isCtAcct ? `
+      <label style="margin-top:10px;display:block">New contributions this period ($) <span style="font-weight:400;color:var(--text3)">optional — added to balance</span></label>
+      <input type="number" id="upd-contrib" step="1" placeholder="0" style="max-width:220px;margin-top:5px" />` : ''}
     </div>
     <div class="upd-nav">
       <span class="upd-counter">${updIdx+1} / ${updQueue.length}</span>
@@ -2054,17 +2074,24 @@ function renderUpdStep() {
   }, 50);
 }
 function saveAcct() {
-  const inp=document.getElementById('upd-val'); const v=inp?parseFloat(inp.value):NaN;
   const a=updQueue[updIdx];
+  if (!a) { finishUpdate(); return; }
+  const inp=document.getElementById('upd-val'); const v=inp?parseFloat(inp.value):NaN;
+  const contribInp=document.getElementById('upd-contrib'); const contrib=contribInp?parseFloat(contribInp.value)||0:0;
   const prev=DB.snapshots.length?DB.snapshots[DB.snapshots.length-1]:null;
   const prevVal=prev&&prev.values[a.id]!==undefined?prev.values[a.id]:null;
   if (isNaN(v) && prevVal!==null) updVals[a.id]=prevVal;
   else if (isNaN(v)) { setStatus('Enter a value or click Skip.','err'); return; }
-  else updVals[a.id]=v;
+  else updVals[a.id]=v + contrib;
+  if (contrib > 0) {
+    if (!updContribs) updContribs = {};
+    updContribs[a.id] = contrib;
+  }
   updIdx++; renderUpdStep();
 }
 function skipAcct() {
   const a=updQueue[updIdx];
+  if (!a) { finishUpdate(); return; }
   const prev=DB.snapshots.length?DB.snapshots[DB.snapshots.length-1]:null;
   if (prev&&prev.values[a.id]!==undefined) updVals[a.id]=prev.values[a.id];
   updIdx++; renderUpdStep();
@@ -2072,7 +2099,9 @@ function skipAcct() {
 async function finishUpdate() {
   const idx=DB.snapshots.findIndex(s=>s.date===updDate);
   if (idx>=0) { if(!confirm('Entry for this date exists. Replace it?'))return; DB.snapshots.splice(idx,1); }
-  DB.snapshots.push({date:updDate, values:updVals});
+  const snap = {date:updDate, values:updVals};
+  if (Object.keys(updContribs).length > 0) snap.contributions = updContribs;
+  DB.snapshots.push(snap);
   DB.snapshots.sort((a,b)=>a.date.localeCompare(b.date));
   await persist(); showScreen('screen-home'); renderHome(); showTab('dashboard');
 }
@@ -2091,6 +2120,7 @@ function exportDB() {
     roth: DB_roth,
     tax: TX,
     cfStars: DB_cfStars,
+    ctAccts: DB_ctAccts,
   };
   const clean = JSON.parse(JSON.stringify(payload));
   clean.db.institutions = clean.db.institutions.map(i => {
@@ -2136,10 +2166,8 @@ async function importDB(input) {
         TX = payload.tax;
         try { localStorage.setItem(TAX_KEY, JSON.stringify(TX)); } catch(e) {}
       }
-      if (payload.cfStars) {
-        DB_cfStars = payload.cfStars;
-        cfPersist();
-      }
+      if (payload.cfStars) { DB_cfStars = payload.cfStars; cfPersist(); }
+      if (payload.ctAccts) { DB_ctAccts = payload.ctAccts; ctPersist(); }
       await persist();
       if (statusEl) { statusEl.textContent = 'Imported successfully.'; statusEl.style.color='var(--accent-dark)'; }
       renderManage();
@@ -2785,6 +2813,101 @@ function resetCalculator() {
   initCalcDefaults();
 }
 
+// ─── CONTRIBUTION TRACKING ───────────────────────────────────────────────────
+
+let DB_ctAccts = []; // account IDs marked for contribution tracking
+let ctMarkMode = false;
+
+function ctPersist() {
+  try { localStorage.setItem('nwt-ctaccts', JSON.stringify(DB_ctAccts)); } catch(e) {}
+}
+
+function ctLoad() {
+  try { const r = localStorage.getItem('nwt-ctaccts'); if (r) DB_ctAccts = JSON.parse(r); } catch(e) {}
+}
+
+function toggleCtMarkMode() {
+  ctMarkMode = !ctMarkMode;
+  renderManage();
+}
+
+function toggleAcctCt(acctId) {
+  if (!DB_ctAccts) DB_ctAccts = [];
+  const idx = DB_ctAccts.indexOf(acctId);
+  if (idx >= 0) DB_ctAccts.splice(idx, 1);
+  else DB_ctAccts.push(acctId);
+  ctPersist();
+  renderManage();
+}
+
+function renderContribs() {
+  ctLoad();
+  const section = document.getElementById('contrib-section');
+  if (!section) return;
+  if (!DB_ctAccts || !DB_ctAccts.length) { section.style.display = 'none'; return; }
+
+  const year = new Date().getFullYear();
+  const yearStart = `${year}-01-01`;
+  const yearEnd   = `${year}-12-31`;
+
+  // Filter snapshots to current year
+  const yearSnaps = DB.snapshots.filter(s => s.date >= yearStart && s.date <= yearEnd);
+
+  // Sum contributions per account for this year
+  const byAcct = {};
+  yearSnaps.forEach(s => {
+    if (!s.contributions) return;
+    Object.entries(s.contributions).forEach(([id, amt]) => {
+      if (!DB_ctAccts.includes(id)) return;
+      byAcct[id] = (byAcct[id] || 0) + amt;
+    });
+  });
+
+  const totalContrib = Object.values(byAcct).reduce((a,b) => a+b, 0);
+  if (!totalContrib && !yearSnaps.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+
+  // YTD net worth growth: compare latest snapshot to last snapshot before Jan 1
+  const allSnaps = [...DB.snapshots].sort((a,b) => a.date.localeCompare(b.date));
+  const latestSnap = allSnaps[allSnaps.length - 1];
+  const preYearSnap = allSnaps.filter(s => s.date < yearStart).pop();
+  const latestNW = latestSnap ? Object.values(latestSnap.values||{}).reduce((a,b)=>a+b,0) : 0;
+  const startNW  = preYearSnap ? Object.values(preYearSnap.values||{}).reduce((a,b)=>a+b,0) : 0;
+  const nwGrowth = latestNW - startNW;
+  const organic  = nwGrowth - totalContrib;
+
+  const fmtD = v => (v < 0 ? '−$' : '$') + Math.abs(Math.round(v)).toLocaleString();
+  const fmtC = v => v >= 0 ? 'var(--accent-dark)' : 'var(--red)';
+
+  document.getElementById('ct-total').textContent = fmtD(totalContrib);
+  document.getElementById('ct-year').textContent = `${year} YTD`;
+  const nwEl = document.getElementById('ct-nw-growth');
+  nwEl.textContent = fmtD(nwGrowth);
+  nwEl.style.color = fmtC(nwGrowth);
+  const orgEl = document.getElementById('ct-organic');
+  orgEl.textContent = fmtD(organic);
+  orgEl.style.color = fmtC(organic);
+
+  // Per-account breakdown
+  const breakdown = document.getElementById('ct-breakdown');
+  if (!breakdown) return;
+  const rows = DB_ctAccts.map(id => {
+    let name = id;
+    DB.institutions.forEach(inst => inst.accounts.forEach(a => { if (a.id === id) name = `${inst.name} — ${a.name}`; }));
+    return { name, amt: byAcct[id] || 0 };
+  }).filter(r => r.amt > 0);
+
+  if (!rows.length) { breakdown.innerHTML = ''; return; }
+  breakdown.innerHTML = `
+    <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
+      ${rows.map(r => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px">
+          <span style="color:var(--text2)">${r.name}</span>
+          <span style="font-family:var(--mono);font-weight:600">${fmtD(r.amt)}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
 // ─── CASH FLOW ANALYSIS ──────────────────────────────────────────────────────
 
 let DB_cfStars = []; // array of acct IDs starred for cash flow tracking
@@ -3382,6 +3505,7 @@ function installPWA() {
 (async function init() {
   await loadDB();
   cfLoad();
+  ctLoad();
   if (DB.institutions.length > 0) { showScreen('screen-home'); renderHome(); }
   else { showScreen('screen-setup'); renderSetupList(); }
   if ('serviceWorker' in navigator) {
