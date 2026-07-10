@@ -2877,7 +2877,16 @@ function renderContribs() {
   const latestSnap = allSnaps[allSnaps.length - 1];
   const preYearSnap = allSnaps.filter(s => s.date < yearStart).pop();
   const latestNW = latestSnap ? sumNW(latestSnap) : 0;
-  const startNW  = preYearSnap ? sumNW(preYearSnap) : 0;
+
+  // For start NW: prefer last pre-year snapshot; fall back to DB.history (CSV-imported data)
+  let startNW = 0;
+  if (preYearSnap) {
+    startNW = sumNW(preYearSnap);
+  } else {
+    const allHistory = [...(DB.history||[])].sort((a,b) => a.date.localeCompare(b.date));
+    const preYearHist = allHistory.filter(h => h.date < yearStart).pop();
+    if (preYearHist) startNW = preYearHist.nw || 0;
+  }
   const nwGrowth = latestNW - startNW;
   const organic  = nwGrowth - totalContrib;
 
