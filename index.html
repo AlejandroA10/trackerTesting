@@ -2869,10 +2869,15 @@ function renderContribs() {
 
   // YTD net worth growth: compare latest snapshot to last snapshot before Jan 1
   const allSnaps = [...DB.snapshots].sort((a,b) => a.date.localeCompare(b.date));
+  // Build a sign map for debt accounts
+  const signMap = {};
+  DB.institutions.forEach(inst => inst.accounts.forEach(a => { signMap[a.id] = acctSign(a); }));
+  const sumNW = snap => Object.entries(snap.values||{}).reduce((s,[id,v]) => s + v * (signMap[id]||1), 0);
+
   const latestSnap = allSnaps[allSnaps.length - 1];
   const preYearSnap = allSnaps.filter(s => s.date < yearStart).pop();
-  const latestNW = latestSnap ? Object.values(latestSnap.values||{}).reduce((a,b)=>a+b,0) : 0;
-  const startNW  = preYearSnap ? Object.values(preYearSnap.values||{}).reduce((a,b)=>a+b,0) : 0;
+  const latestNW = latestSnap ? sumNW(latestSnap) : 0;
+  const startNW  = preYearSnap ? sumNW(preYearSnap) : 0;
   const nwGrowth = latestNW - startNW;
   const organic  = nwGrowth - totalContrib;
 
