@@ -335,10 +335,9 @@ tr:hover td{background:var(--bg2)}
       <div id="contrib-section" style="display:none;margin-top:1.5rem">
         <div class="card">
           <div class="chart-lbl" style="margin-bottom:12px">YTD contributions</div>
-          <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:1rem">
+          <div class="metrics-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:1rem">
             <div class="metric"><div class="metric-lbl">Total contributed</div><div class="metric-val" id="ct-total">—</div><div class="metric-sub" id="ct-year"></div></div>
             <div class="metric"><div class="metric-lbl">Net worth growth</div><div class="metric-val" id="ct-nw-growth">—</div><div class="metric-sub">Jan 1 → today</div></div>
-            <div class="metric"><div class="metric-lbl">Organic growth</div><div class="metric-val" id="ct-organic">—</div><div class="metric-sub">growth minus contributions</div></div>
           </div>
           <div id="ct-breakdown"></div>
         </div>
@@ -2888,7 +2887,6 @@ function renderContribs() {
     if (preYearHist) startNW = preYearHist.nw || 0;
   }
   const nwGrowth = latestNW - startNW;
-  const organic  = nwGrowth - totalContrib;
 
   const fmtD = v => (v < 0 ? '−$' : '$') + Math.abs(Math.round(v)).toLocaleString();
   const fmtC = v => v >= 0 ? 'var(--accent-dark)' : 'var(--red)';
@@ -2898,9 +2896,6 @@ function renderContribs() {
   const nwEl = document.getElementById('ct-nw-growth');
   nwEl.textContent = fmtD(nwGrowth);
   nwEl.style.color = fmtC(nwGrowth);
-  const orgEl = document.getElementById('ct-organic');
-  orgEl.textContent = fmtD(organic);
-  orgEl.style.color = fmtC(organic);
 
   // Per-account breakdown
   const breakdown = document.getElementById('ct-breakdown');
